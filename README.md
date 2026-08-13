@@ -41,7 +41,7 @@ And:
 
 ## What is TamaBench?
 
-TamaBench is an **open benchmark** that evaluates how well a language model can act as an **autonomous agent** in a real-time resource-management environment — a virtual pet (Tamagotchi) that decays over time and needs constant care.
+TamaBench is an **open benchmark for small, local, and quantized language models**. It evaluates how well a model can act as an **autonomous agent** in a real-time resource-management environment — a virtual pet (Tamagotchi) that decays over time and needs constant care.
 
 The agent must **survive 3 simulated days** by:
 - Feeding, cleaning, and healing a pet
@@ -71,6 +71,22 @@ The Tamagotchi-style environment is the **simulation mechanism**, not the whole 
  MODEL
 ```
 
+## Quick Demo
+
+Start a complete local autonomous-agent benchmark with:
+
+```bash
+ollama pull llama3.2:3b
+python -m tamabench.cli run \
+  --agent raw_llm \
+  --model llama3.2:3b \
+  --episodes 1 \
+  --display live
+```
+
+Replace `llama3.2:3b` with any model served by Ollama or an OpenAI-compatible
+local endpoint. The live monitor shows the simulation state, actions, schema
+quality, economy, and the final benchmark report after the episode ends.
 ### Hunger Meter Semantics
 
 The `hunger` value is a **fullness meter** so that larger values are better:
@@ -265,7 +281,7 @@ Planned expansion: Average Health, Planning Failures, Resource Failures, Truncat
 ### Known Limitations
 - ❌ No multi-agent or parallel episode runner yet
 - ❌ No web dashboard for result visualization
-- ❌ Benchmark v0.1.0 results are not cross-version comparable
+- ❌ Results from older environment versions are not cross-version comparable
 
 ---
 
@@ -334,6 +350,27 @@ sqlite3 tamabench_results.db "
 "
 ```
 
+### Shareable Model Comparison
+
+For a useful comparison, run the same number of episodes and seeds for every
+model, then share survival, health, schema quality, and efficiency together:
+
+```bash
+python -m tamabench.cli run --agent rule --episodes 5 --seed-start 42 --display compact
+python -m tamabench.cli run --agent raw_llm --model YOUR_MODEL \
+  --episodes 5 --seed-start 42 --display compact
+python -m tamabench.cli report-v1
+```
+
+Use this format when posting results:
+
+| Model | Episodes | Survival | Average health | Final schema | Output tokens | p95 latency |
+|---|---:|---:|---:|---:|---:|---:|
+| `your-model` | 5 | fill in | fill in | fill in | fill in | fill in |
+
+Always include the TamaBench/environment version, seed range, execution mode,
+and generation limit so other people can reproduce the comparison.
+
 ---
 
 ## Output & Logs
@@ -370,7 +407,8 @@ TamaBench/
 
 ## How Scoring Works
 
-An episode is scored across 5 dimensions:
+An episode is evaluated across survival, care quality, economy, decision quality,
+and inference efficiency:
 
 | Metric | Description |
 |---|---|
@@ -392,5 +430,5 @@ An episode is scored across 5 dimensions:
 ---
 
 <div align="center">
-<sub>Small Model. Long Horizon. Persistent Consequences.</sub>
+<sub>Small Model. Long Horizon. Persistent Consequences. · Built as part of Project Aether · TamaBench v1.1.0</sub>
 </div>
