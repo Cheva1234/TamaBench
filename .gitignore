@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# TamaBench runtime artifacts
+tamabench_results.db
+tamabench_results.db-shm
+tamabench_results.db-wal
+tamabench_results_backup_*.db
+tamabench_events.jsonl
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

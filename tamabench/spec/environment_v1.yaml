@@ -1,0 +1,51 @@
+environment_version: "1.0.0"
+scenario_id: "standard_v1"
+scenario_version: 1
+
+dynamics:
+  hunger_rate: 0.25
+  awake_pet_energy_decay: 0.15
+  sleep_pet_energy_recovery: 0.50
+  cleanliness_rate: 0.10
+  happiness_decay_rate: 0.05
+  critical_hunger_health_penalty: 0.20
+  low_cleanliness_health_penalty: 0.10
+  sickness_health_penalty: 0.30
+  sleep_health_recovery: 0.05
+  agent_awake_energy_decay: 0.08
+  agent_sleep_energy_recovery: 0.40
+
+economy:
+  jobs:
+    - id: "cafe_shift"
+      name: "Cafe Shift"
+      duration_minutes: 60
+      reward: 40
+      energy_cost: 15
+    - id: "delivery"
+      name: "Express Delivery"
+      duration_minutes: 120
+      reward: 90
+      energy_cost: 35
+    - id: "freelance"
+      name: "Freelance Task"
+      duration_minutes: 30
+      reward: 20
+      energy_cost: 8
+  shop:
+    - item: "food"
+      cost: 20
+      description: "Restores 40 hunger and increases happiness by 5."
+    - item: "medicine"
+      cost: 50
+      description: "Cures sickness and restores 15 health."
+
+events:
+  sickness_min_interval: 1440
+  sickness_max_interval: 2880
+  low_cleanliness_sickness_probability: 0.50
+  normal_cleanliness_sickness_probability: 0.15
+
+context_budget:
+  max_context_tokens: 3000
+  max_growth_slope_tokens_per_day: 2.0
