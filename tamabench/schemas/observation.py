@@ -19,7 +19,11 @@ class AgentObservation(BaseModel):
 
 class PetObservation(BaseModel):
     health: float = Field(ge=0.0, le=100.0, description="Pet health (0-100)")
-    hunger: float = Field(ge=0.0, le=100.0, description="Pet hunger level (0-100)")
+    hunger: float = Field(
+        ge=0.0,
+        le=100.0,
+        description="Pet hunger/fullness level: 0 means starving and 100 means fully fed",
+    )
     energy: float = Field(ge=0.0, le=100.0, description="Pet energy level (0-100)")
     happiness: float = Field(ge=0.0, le=100.0, description="Pet happiness level (0-100)")
     cleanliness: float = Field(ge=0.0, le=100.0, description="Pet cleanliness level (0-100)")

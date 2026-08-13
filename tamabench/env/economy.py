@@ -8,6 +8,8 @@ from tamabench.env.state import Job, ShopItem, WorldState
 
 
 class EconomySystem:
+    FOOD_HUNGER_RESTORE: int = 35
+
     DEFAULT_JOBS: list[Job] = [
         Job(
             id="cafe_shift",
@@ -36,7 +38,7 @@ class EconomySystem:
         ShopItem(
             item="food",
             cost=30,
-            description="Restores 35 hunger and increases happiness by 5.",
+            description="Increases the hunger/fullness meter by 35 and increases happiness by 5.",
         ),
         ShopItem(
             item="medicine",

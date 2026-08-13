@@ -40,9 +40,11 @@ def test_feed_action_precondition_and_effects():
 
     # Valid feed
     initial_food = env.state.inventory.food
+    initial_hunger = env.state.pet.hunger
     result = env.step(ActionProposal(action="feed"))
     assert result.success is True
     assert env.state.inventory.food == initial_food - 1
+    assert env.state.pet.hunger > initial_hunger
 
     # Deplete food inventory
     env.state.inventory.food = 0
@@ -51,6 +53,25 @@ def test_feed_action_precondition_and_effects():
     assert result_empty.error is not None
     assert result_empty.error.category == ErrorCategory.ENVIRONMENT
     assert result_empty.error.error_type == ErrorType.INSUFFICIENT_RESOURCE
+
+
+@pytest.mark.integration
+def test_fullness_meter_uses_100_as_full_and_low_fullness_causes_damage():
+    env = TamaEnv()
+    env.reset(seed=42)
+
+    assert env.state.pet.hunger == 80.0
+    env.state.pet.hunger = 100.0
+    env.advance_time(60)
+
+    assert env.state.pet.hunger == 82.0
+    assert env.state.pet.health == 100.0
+
+    env.state.pet.hunger = 15.0
+    env.advance_time(1)
+
+    assert env.state.pet.hunger == 14.7
+    assert env.state.pet.health == 99.8
 
 
 @pytest.mark.integration

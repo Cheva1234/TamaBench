@@ -74,7 +74,7 @@ class BatchRunner:
                 "scenario_id": scenario_id,
                 "scenario_version": scenario_version,
                 "benchmark_version": "1.1.0",
-                "environment_version": "1.0.0",
+                "environment_version": "1.1.0",
                 "mode": self.mode.value,
                 "agent_type": agent.name,
                 "model_name": getattr(agent, "model_name", agent.name),

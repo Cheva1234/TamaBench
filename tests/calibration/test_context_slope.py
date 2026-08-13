@@ -29,7 +29,7 @@ def test_context_growth_stationarity_over_30_days():
         if env.terminated:
             env.terminated = False
             env.state.pet.health = 100.0
-            env.state.pet.hunger = 20.0
+            env.state.pet.hunger = 80.0
             env.state.inventory.food = 5
 
         obs = env.observe()

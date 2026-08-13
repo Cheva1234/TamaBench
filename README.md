@@ -24,6 +24,20 @@ The agent must **survive 3 simulated days** by:
 
 This tests **real-world agentic capabilities** — not text generation quality, but the model's ability to **plan, prioritize, manage resources, and adapt under pressure**.
 
+### Hunger Meter Semantics
+
+The `hunger` value is a **fullness meter** so that larger values are better:
+
+- `100` = fully fed
+- `0` = starving
+- Feeding increases the meter by `35`
+- Time lowers the meter by `18` per simulated hour
+- Health damage begins when the meter falls below `15`
+
+This meaning is intentionally explicit because autonomous agents must reason about
+whether a time-based action will leave enough food energy before they sleep, work,
+or wait.
+
 ---
 
 ## Why Use TamaBench to Select an Automation Model?

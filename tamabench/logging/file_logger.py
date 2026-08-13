@@ -87,7 +87,7 @@ class FileLogger:
             "--------------------------------------------------------------------------------\n"
             f"• Proposed Action : {action_str}\n"
             f"• Execution Status: {err_str}\n"
-            f"• Pet State       : Health={p.health:.1f}/100 | Hunger={p.hunger:.1f}/100 | Cleanliness={p.cleanliness:.1f}/100 | Sick={p.is_sick} | Sleeping={p.is_sleeping}\n"
+            f"• Pet State       : Health={p.health:.1f}/100 | Hunger/Fullness={p.hunger:.1f}/100 | Cleanliness={p.cleanliness:.1f}/100 | Sick={p.is_sick} | Sleeping={p.is_sleeping}\n"
             f"• Agent State     : Money=${a.money} | Energy={a.energy}/100 | Activity={a.activity}\n"
             f"• Inventory       : Food={inv.food} | Medicine={inv.medicine}\n"
             f"• Primary Priority: {priority}\n"

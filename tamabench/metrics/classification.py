@@ -29,7 +29,7 @@ class ActionEffectivenessClassifier:
         """Classifies action effectiveness based on state transition utility."""
         if error is not None:
             # Environment or Schema Error
-            if before_obs.pet.is_sick or before_obs.pet.hunger > 80:
+            if before_obs.pet.is_sick or before_obs.pet.hunger < 20:
                 return ActionCategory.HARMFUL
             return ActionCategory.WASTEFUL
 
@@ -42,7 +42,7 @@ class ActionEffectivenessClassifier:
         agent_before = before_obs.agent
 
         if action == "feed":
-            if pet_before.hunger >= 30:
+            if pet_before.hunger <= 70:
                 return ActionCategory.PRODUCTIVE
             return ActionCategory.WASTEFUL
 

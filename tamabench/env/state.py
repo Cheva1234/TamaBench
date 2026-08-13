@@ -28,7 +28,9 @@ class AgentState:
 @dataclass
 class PetState:
     health: float = 100.0
-    hunger: float = 20.0
+    # Fullness meter kept under the legacy `hunger` field name: 100 is full,
+    # 0 is starving.
+    hunger: float = 80.0
     energy: float = 80.0
     happiness: float = 70.0
     cleanliness: float = 90.0
@@ -81,8 +83,8 @@ class WorldState:
     shop_items_available: list[ShopItem] = field(default_factory=list)
 
     # Metadata for scenario versioning
-    benchmark_version: str = "0.1.0"
-    environment_version: str = "0.1.0"
+    benchmark_version: str = "1.1.0"
+    environment_version: str = "1.1.0"
     scenario_id: str = "standard_v1"
     scenario_version: int = 1
     seed: int = 42

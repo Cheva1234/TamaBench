@@ -78,8 +78,8 @@ class ReferencePolicyEvaluator:
                         rationale="Suboptimal: Did not prioritize acquiring medicine for sick pet.",
                     )
 
-        # Scenario 2: Critical Starvation (Pet hunger > 80)
-        if pet.hunger >= 80.0:
+        # Scenario 2: Critical Starvation (fullness <= 20)
+        if pet.hunger <= 20.0:
             is_critical = True
             if inv.food > 0:
                 if action == "feed":

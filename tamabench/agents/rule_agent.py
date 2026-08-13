@@ -22,9 +22,9 @@ class RuleAgent(BaseAgent):
         agent = observation.agent
         inv = observation.inventory
 
-        # 0. If pet is sleeping and fully rested or hungry, wake up
+        # 0. If pet is sleeping and fully rested or low on fullness, wake up
         if pet.is_sleeping:
-            if pet.energy >= 90 or pet.hunger > 60:
+            if pet.energy >= 90 or pet.hunger < 40:
                 proposal = ActionProposal(action="wake")
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
             proposal = ActionProposal(action="wait", minutes=60)
@@ -34,7 +34,7 @@ class RuleAgent(BaseAgent):
         # before selecting a non-executable work fallback, otherwise the
         # baseline can stall while the pet continues to decay.
         if agent.energy < 12:
-            if pet.hunger >= 50 and inv.food > 0:
+            if pet.hunger < 50 and inv.food > 0:
                 proposal = ActionProposal(action="feed")
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
             proposal = ActionProposal(action="sleep", hours=3)
@@ -49,8 +49,8 @@ class RuleAgent(BaseAgent):
                 proposal = ActionProposal(action="buy", item="medicine", amount=1)
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
-        # 2. High Priority: Feed pet if hungry
-        if pet.hunger >= 50:
+        # 2. High Priority: Feed pet if fullness is low
+        if pet.hunger < 50:
             if inv.food > 0:
                 proposal = ActionProposal(action="feed")
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
@@ -69,8 +69,8 @@ class RuleAgent(BaseAgent):
             # Pick best available job agent has energy for
             affordable_jobs = [j for j in observation.jobs_available if agent.energy >= j.energy_cost]
             if affordable_jobs:
-                # Prefer shorter cafe shift if pet is hungry, else highest reward
-                if pet.hunger > 40:
+                # Prefer shorter cafe shift if fullness is low, else highest reward
+                if pet.hunger < 60:
                     best_job = min(affordable_jobs, key=lambda j: j.duration_minutes)
                 else:
                     best_job = max(affordable_jobs, key=lambda j: j.reward)

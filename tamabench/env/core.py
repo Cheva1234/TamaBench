@@ -37,7 +37,7 @@ class TamaEnv:
             agent=AgentState(money=30, energy=100, current_activity="idle"),
             pet=PetState(
                 health=100.0,
-                hunger=20.0,
+                hunger=80.0,
                 energy=80.0,
                 happiness=70.0,
                 cleanliness=90.0,
@@ -48,8 +48,8 @@ class TamaEnv:
             inventory=Inventory(food=1, medicine=0),
             jobs_available=EconomySystem.get_default_jobs(),
             shop_items_available=EconomySystem.get_default_shop(),
-            benchmark_version="1.0.0",
-            environment_version="1.0.0",
+            benchmark_version="1.1.0",
+            environment_version="1.1.0",
             scenario_id=scenario_id,
             scenario_version=scenario_version,
             seed=seed,
@@ -191,7 +191,10 @@ class TamaEnv:
 
         if action == "feed":
             self.state.inventory.food -= 1
-            self.state.pet.hunger = max(0.0, self.state.pet.hunger - 35.0)
+            self.state.pet.hunger = min(
+                100.0,
+                self.state.pet.hunger + EconomySystem.FOOD_HUNGER_RESTORE,
+            )
             self.state.pet.happiness = min(100.0, self.state.pet.happiness + 5.0)
             exec_minutes = 2
             self.advance_time(exec_minutes)

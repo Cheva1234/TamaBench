@@ -35,20 +35,20 @@ STATE:
 {state}
 
 ACTIONS:
-feed consumes food and reduces hunger; clean restores cleanliness; heal consumes medicine;
+feed consumes food and increases hunger/fullness; clean restores cleanliness; heal consumes medicine;
 play raises happiness; sleep(hours=3,5,8), wait(minutes), and work(job_id) block and fast-forward;
 buy(item,amount) purchases supplies; wake and observe advance a short time.
 
 WORLD RULES:
-Hunger is a danger meter, not fullness: 0 means satisfied and 100 means starving.
-Feeding consumes one food and lowers hunger by 35; do not feed only because the
-number is high without checking whether food is available. Hunger rises by 18 per
-simulated hour and is capped at 100. While hunger is above 85, health decreases
-continuously by 0.2 per simulated minute (12 per hour), not just once. Before any
-time-based action, estimate hunger at completion: a 3-hour sleep adds about 54
-hunger, so sleeping at hunger 65 or higher reaches the danger zone. Sleeping only
-recovers health when hunger is 50 or lower. If a time-based action can push hunger
-above 85, feed first if food is available or choose a shorter action.
+Hunger is a fullness meter, not a starvation score: 0 means starving and 100 means fully fed.
+Feeding increases hunger by 35 and consumes one food; do not feed when fullness is
+already high because food is limited. Hunger decreases by 18 per simulated hour
+and is capped at 0. While hunger is below 15, health decreases continuously by
+0.2 per simulated minute (12 per hour), not just once. Before any time-based
+action, estimate hunger at completion: a 3-hour sleep removes about 54 hunger, so
+sleeping at hunger 50 or lower reaches the danger zone. Sleeping only recovers
+health when hunger is 50 or higher. If a time-based action can push hunger below
+15, feed first when fullness is low or choose a shorter action.
 Cleanliness falls continuously; cleanliness < 20 damages health and increases
 sickness risk. Sickness damages health. Agent energy limits care/work actions.
 Health reaching 0 ends the episode.

@@ -11,7 +11,9 @@ from tamabench.env.state import WorldState
 
 class DynamicsEngine:
     # Standard rates per simulation minute
-    HUNGER_RATE: float = 0.30              # +18 / hour
+    HUNGER_RATE: float = 0.30              # -18 / hour from the fullness meter
+    CRITICAL_HUNGER_THRESHOLD: float = 15.0
+    SLEEP_HEALTH_RECOVERY_THRESHOLD: float = 50.0
     AWAKE_PET_ENERGY_DECAY: float = 0.20   # -12 / hour
     SLEEP_PET_ENERGY_RECOVERY: float = 0.5 # +30 / hour
     CLEANLINESS_RATE: float = 0.15         # -9 / hour
@@ -68,24 +70,32 @@ class DynamicsEngine:
             # Split one minute before discontinuous health/recovery rules so
             # the crossing minute is evaluated with the same post-update
             # condition as the reference tick engine.
-            if pet.hunger <= 85.0:
-                crossing = int((85.0 - pet.hunger) / cls.HUNGER_RATE) + 1
+            if pet.hunger >= cls.CRITICAL_HUNGER_THRESHOLD:
+                crossing = int(
+                    (pet.hunger - cls.CRITICAL_HUNGER_THRESHOLD) / cls.HUNGER_RATE
+                ) + 1
                 segment = min(segment, max(1, crossing - 1))
             if pet.cleanliness >= 20.0:
                 crossing = int((pet.cleanliness - 20.0) / cls.CLEANLINESS_RATE) + 1
                 segment = min(segment, max(1, crossing - 1))
-            if pet.is_sleeping and pet.hunger <= 50.0:
-                crossing = int((50.0 - pet.hunger) / cls.HUNGER_RATE) + 1
+            if pet.is_sleeping and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD:
+                crossing = int(
+                    (pet.hunger - cls.SLEEP_HEALTH_RECOVERY_THRESHOLD) / cls.HUNGER_RATE
+                ) + 1
                 segment = min(segment, max(1, crossing - 1))
 
             health_rate = 0.0
-            if pet.hunger > 85.0:
+            if pet.hunger < cls.CRITICAL_HUNGER_THRESHOLD:
                 health_rate -= cls.CRITICAL_HUNGER_HEALTH_PENALTY
             if pet.cleanliness < 20.0:
                 health_rate -= cls.LOW_CLEANLINESS_HEALTH_PENALTY
             if pet.is_sick:
                 health_rate -= cls.SICKNESS_HEALTH_PENALTY
-            if pet.is_sleeping and not pet.is_sick and pet.hunger <= 50.0:
+            if (
+                pet.is_sleeping
+                and not pet.is_sick
+                and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD
+            ):
                 health_rate += cls.SLEEP_HEALTH_RECOVERY
             if health_rate < 0.0:
                 segment = min(segment, max(1, math.ceil(pet.health / -health_rate)))
@@ -114,8 +124,9 @@ class DynamicsEngine:
         pet = state.pet
         agent = state.agent
 
-        # 1. Update Pet Hunger
-        pet.hunger = min(100.0, pet.hunger + (cls.HUNGER_RATE * minutes))
+        # 1. Update Pet Fullness. The public field remains `hunger` for
+        # compatibility, but 100 means fully fed and 0 means starving.
+        pet.hunger = max(0.0, pet.hunger - (cls.HUNGER_RATE * minutes))
 
         # 2. Update Pet Energy
         if pet.is_sleeping:
@@ -130,7 +141,7 @@ class DynamicsEngine:
         # 4. Calculate Health Change
         health_delta = 0.0
 
-        if pet.hunger > 85.0:
+        if pet.hunger < cls.CRITICAL_HUNGER_THRESHOLD:
             health_delta -= cls.CRITICAL_HUNGER_HEALTH_PENALTY * minutes
 
         if pet.cleanliness < 20.0:
@@ -139,7 +150,11 @@ class DynamicsEngine:
         if pet.is_sick:
             health_delta -= cls.SICKNESS_HEALTH_PENALTY * minutes
 
-        if pet.is_sleeping and not pet.is_sick and pet.hunger <= 50.0:
+        if (
+            pet.is_sleeping
+            and not pet.is_sick
+            and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD
+        ):
             health_delta += cls.SLEEP_HEALTH_RECOVERY * minutes
 
         pet.health = max(0.0, min(100.0, pet.health + health_delta))

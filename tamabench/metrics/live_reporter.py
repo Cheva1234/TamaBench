@@ -147,7 +147,7 @@ class LiveReporter:
                 f"• Inventory: Food={inv.food}, Medicine={inv.medicine}\n\n"
                 f"[bold white]TAMAGOTCHI STATE[/bold white]\n"
                 f"• Health: [{h_color}]{p.health:.1f}/100[/{h_color}]\n"
-                f"• Hunger: [{'red' if p.hunger > 75 else 'green'}]{p.hunger:.1f}/100[/{'red' if p.hunger > 75 else 'green'}]\n"
+                f"• Hunger / Fullness: [{'red' if p.hunger < 25 else ('yellow' if p.hunger < 50 else 'green')}]{p.hunger:.1f}/100[/{'red' if p.hunger < 25 else ('yellow' if p.hunger < 50 else 'green')}]\n"
                 f"• Energy: {p.energy:.1f}/100\n"
                 f"• Happiness: {p.happiness:.1f}/100\n"
                 f"• Cleanliness: [{'red' if p.cleanliness < 30 else 'green'}]{p.cleanliness:.1f}/100[/{'red' if p.cleanliness < 30 else 'green'}]\n"

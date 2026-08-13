@@ -27,7 +27,8 @@ class ActionPrediction(BaseModel):
         default=None, description="Agent prediction: expected agent money balance after action"
     )
     expected_hunger_after: Optional[float] = Field(
-        default=None, description="Agent prediction: expected pet hunger level after action"
+        default=None,
+        description="Agent prediction: expected pet hunger/fullness level after action (0 starving, 100 full)",
     )
     expected_health_after: Optional[float] = Field(
         default=None, description="Agent prediction: expected pet health level after action"
