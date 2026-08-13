@@ -26,3 +26,7 @@ dev = [
 
 [project.scripts]
 tamabench = "tamabench.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["tamabench*"]
+exclude = ["tests*"]

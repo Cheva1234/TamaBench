@@ -7,6 +7,7 @@ verifying state_hash equality at every step to validate simulator determinism.
 import json
 from typing import Tuple
 from tamabench.env.core import TamaEnv
+from tamabench.env.time_engine import BenchmarkMode
 from tamabench.logging.database import DatabaseStore
 
 
@@ -27,7 +28,11 @@ class ReplayEngine:
         scenario_id = run_row["scenario_id"]
         scenario_version = run_row["scenario_version"]
 
-        env = TamaEnv()
+        try:
+            mode = BenchmarkMode(run_row["mode"])
+        except ValueError:
+            mode = BenchmarkMode.LOGICAL
+        env = TamaEnv(mode=mode)
         env.reset(seed=seed, scenario_id=scenario_id, scenario_version=scenario_version)
 
         decisions = self.db.get_run_decisions(run_id)

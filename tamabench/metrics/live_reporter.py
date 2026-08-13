@@ -27,6 +27,17 @@ class LiveReporter:
         self.valid_env_count: int = 0
         self.total_income: int = 0
         self.total_spending: int = 0
+        self.model_status: str = "idle"
+        self.last_observation: Optional[Observation] = None
+        self.last_step_result: Optional[StepResult] = None
+
+    def set_model_status(self, status: str):
+        """Update display state without implying that an inference is running."""
+        if status not in {"idle", "generating"}:
+            raise ValueError("status must be 'idle' or 'generating'")
+        self.model_status = status
+        if self.live:
+            self.live.update(self._build_layout(self.last_observation, self.last_step_result))
 
     def start(self):
         layout = self._build_layout(None, None)
@@ -45,6 +56,8 @@ class LiveReporter:
         step_result: StepResult,
         latency_ms: float = 0.0,
     ):
+        self.last_observation = observation
+        self.last_step_result = step_result
         self.total_decisions += 1
 
         is_schema = 1 if (step_result.error is None or step_result.error.category != "SCHEMA") else 0
@@ -144,7 +157,7 @@ class LiveReporter:
             stats_text = (
                 f"[bold white]MODEL RUNTIME & RESIDENCY[/bold white]\n"
                 f"• Residency: [bold green]RESIDENT[/bold green] (RAM/VRAM)\n"
-                f"• API Status: [bold cyan]DECISION_BOUNDARY[/bold cyan]\n"
+                f"• API Status: [bold cyan]{self.model_status.upper()}[/bold cyan]\n"
                 f"• Total API Calls: [white]{self.total_decisions}[/white]\n"
                 f"• Last Call Latency: [yellow]{last_lat}[/yellow]\n\n"
                 f"[bold white]RUNNING METRICS[/bold white]\n"

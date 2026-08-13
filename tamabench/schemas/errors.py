@@ -17,6 +17,7 @@ class ErrorCategory(str, Enum):
 class ErrorType(str, Enum):
     # Schema Errors (Stage 1)
     INVALID_JSON = "INVALID_JSON"
+    OUTPUT_TRUNCATED = "OUTPUT_TRUNCATED"
     INVALID_SCHEMA = "INVALID_SCHEMA"
     UNKNOWN_ACTION = "UNKNOWN_ACTION"
     MISSING_ARGUMENT = "MISSING_ARGUMENT"

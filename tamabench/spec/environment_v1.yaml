@@ -49,3 +49,8 @@ events:
 context_budget:
   max_context_tokens: 3000
   max_growth_slope_tokens_per_day: 2.0
+
+model_runtime:
+  residency: persistent
+  inference_trigger: decision_boundary
+  max_output_tokens: 4096

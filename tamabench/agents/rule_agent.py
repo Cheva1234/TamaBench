@@ -30,6 +30,16 @@ class RuleAgent(BaseAgent):
             proposal = ActionProposal(action="wait", minutes=60)
             return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
+        # Waiting does not recover agent energy in the V1 environment. Sleep
+        # before selecting a non-executable work fallback, otherwise the
+        # baseline can stall while the pet continues to decay.
+        if agent.energy < 12:
+            if pet.hunger >= 50 and inv.food > 0:
+                proposal = ActionProposal(action="feed")
+                return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
+            proposal = ActionProposal(action="sleep", hours=3)
+            return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
+
         # 1. Critical Priority: Heal pet if sick
         if pet.is_sick:
             if inv.medicine > 0:

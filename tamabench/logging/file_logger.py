@@ -6,7 +6,7 @@ and replay JSONL streams (logs/run_<RUN_ID>_replay.jsonl) per benchmark episode 
 
 import os
 import json
-from typing import Optional
+from typing import Any, Optional
 from tamabench.schemas.observation import Observation
 from tamabench.schemas.actions import ActionProposal, StepResult
 
@@ -48,6 +48,7 @@ class FileLogger:
         step_result: StepResult,
         latency_ms: float = 0.0,
         thinking_process: str = "",
+        decision_metadata: Optional[dict[str, Any]] = None,
     ):
         p = obs.pet
         a = obs.agent
@@ -70,6 +71,15 @@ class FileLogger:
         err_str = f"❌ ERROR: {step_result.error.error_type} ({step_result.error.message})" if step_result.error else "✅ SUCCESS"
 
         thinking_block = f"• Model Internal Thinking Process (<think>):\n  {thinking_process.strip()}\n" if thinking_process and thinking_process.strip() else ""
+        metadata = decision_metadata or {}
+        generation_block = (
+            f"• Generation       : finish_reason={metadata.get('finish_reason', '-')}, "
+            f"attempts={metadata.get('attempt_count', 1)}, "
+            f"truncated={bool(metadata.get('was_truncated', False))}\n"
+            f"• Token Split      : reasoning={metadata.get('reasoning_tokens', 0)}, "
+            f"json={metadata.get('json_tokens', 0)}, "
+            f"total={metadata.get('total_output_tokens', 0)}\n"
+        )
 
         block = (
             "--------------------------------------------------------------------------------\n"
@@ -85,6 +95,7 @@ class FileLogger:
             f"• Decision Rationale:\n"
             f"  {rationale}\n"
             f"{thinking_block}"
+            f"{generation_block}"
             f"• Raw Model Response:\n"
             f"  {raw_output.strip()}\n\n"
         )
@@ -108,6 +119,7 @@ class FileLogger:
                 "error": step_result.error.model_dump(exclude_none=True) if step_result.error else None,
                 "state_hash": step_result.state_hash,
             },
+            "generation": metadata,
         }
 
         line = json.dumps(replay_record) + "\n"

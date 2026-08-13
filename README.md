@@ -53,7 +53,7 @@ TamaBench closes this gap by requiring the model to:
 
 ---
 
-## Current State (v0.1.0)
+## Current State (v1.1 runtime)
 
 > ⚠️ **Early Research Preview** — APIs and scoring may change between minor versions.
 
@@ -66,6 +66,11 @@ TamaBench closes this gap by requiring the model to:
 - ✅ SQLite result database + JSONL event stream
 - ✅ Rule-based baseline agent for reference comparison
 - ✅ Tested with: `llama3.2:3b`, `qwen2.5:7b`, `lfm2.5-2.6b`
+- ✅ Configurable generation limit (`--max-output-tokens`, default `4096`)
+- ✅ Persistent model residency with Ollama `keep_alive` and warmup telemetry
+- ✅ Inference only at decision boundaries; blocking actions use analytical time-skips
+- ✅ Separate first-pass schema, recovery, retry, and truncation metrics
+- ✅ Reference (one-minute) and accelerated (event-driven) modes with state-hash equivalence tests
 
 ### Known Limitations
 - ❌ No multi-agent or parallel episode runner yet
@@ -99,6 +104,10 @@ ollama pull llama3.2:3b
 ```bash
 # Run 1 episode with any Ollama model
 python -m tamabench.cli run --agent raw_llm --model llama3.2:3b --episodes 1
+
+# Use the V1.1 default output budget explicitly
+python -m tamabench.cli run --agent raw_llm --model lfm2.5-2.6b \
+  --max-output-tokens 4096 --episodes 1
 
 # Run 3 episodes with a quantized model
 python -m tamabench.cli run --agent raw_llm --model qwen2.5:7b --episodes 3
@@ -140,7 +149,7 @@ sqlite3 tamabench_results.db "
 |---|---|
 | `tamabench_results.db` | SQLite database with all episode results |
 | `tamabench_events.jsonl` | Per-step event stream (JSONL format) |
-| `logs/reasoning_<date>.txt` | Full `<think>` reasoning trace per step |
+| `logs/reasoning_<date>.txt` | Reasoning, JSON output, finish reason, and token split per step |
 | `logs/replay_<run_id>.jsonl` | Full episode replay for post-analysis |
 
 ---
@@ -176,7 +185,10 @@ An episode is scored across 5 dimensions:
 | **Average Health** | Mean health across all sampled steps (0–100) |
 | **Average Happiness** | Mean happiness across all sampled steps (0–100) |
 | **Economic Efficiency** | Income earned relative to spending |
-| **Schema Compliance** | % of steps with valid JSON output on first attempt |
+| **First-Pass Schema Compliance** | % of decisions valid before recovery |
+| **Final Schema Recovery** | % recovered or valid after retries |
+| **Truncation / Retry Rate** | Runtime-cut generation and retry frequency |
+| **Inference Efficiency** | p95 latency, API calls/day, reasoning/JSON tokens, and profiler breakdown |
 
 ---
 

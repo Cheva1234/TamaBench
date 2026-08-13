@@ -22,6 +22,7 @@ def cli():
 @click.option("--agent", type=click.Choice(["random_schema", "random_valid", "rule", "raw_llm"]), default="rule", help="Agent baseline type")
 @click.option("--model", type=str, default="qwen2.5:3b", help="Model name if using raw_llm agent")
 @click.option("--api-base", type=str, default="http://localhost:11434/v1", help="OpenAI-compatible API base URL")
+@click.option("--max-output-tokens", type=click.IntRange(min=1), default=4096, show_default=True, help="Maximum generated tokens per model attempt")
 @click.option("--episodes", type=int, default=1, help="Number of benchmark episodes to run")
 @click.option("--seed-start", type=int, default=42, help="Starting RNG seed")
 @click.option("--schema-mode", type=click.Choice(["raw_json", "provider_constrained"]), default="raw_json", help="Schema benchmark mode")
@@ -30,7 +31,7 @@ def cli():
 @click.option("--model-lifecycle", type=click.Choice(["warm", "cold"]), default="warm", help="Model lifecycle management mode")
 @click.option("--db-path", type=str, default="tamabench_results.db", help="SQLite results database path")
 @click.option("--event-path", type=str, default="tamabench_events.jsonl", help="JSONL event stream file path")
-def run(agent, model, api_base, episodes, seed_start, schema_mode, display, speed, model_lifecycle, db_path, event_path):
+def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_mode, display, speed, model_lifecycle, db_path, event_path):
     """Executes a benchmark experiment run."""
     mode_enum = BenchmarkMode.ACCELERATED if speed == "accelerated" else BenchmarkMode.LOGICAL
     runner = BatchRunner(db_path=db_path, event_path=event_path, mode=mode_enum)
@@ -42,7 +43,12 @@ def run(agent, model, api_base, episodes, seed_start, schema_mode, display, spee
     shared_agent = None
     if model_lifecycle == "warm":
         if agent == "raw_llm":
-            shared_agent = RawLLMAgent(model_name=model, api_base=api_base, schema_mode=schema_mode)
+            shared_agent = RawLLMAgent(
+                model_name=model,
+                api_base=api_base,
+                schema_mode=schema_mode,
+                max_output_tokens=max_output_tokens,
+            )
         elif agent == "rule":
             shared_agent = RuleAgent()
 
@@ -59,7 +65,12 @@ def run(agent, model, api_base, episodes, seed_start, schema_mode, display, spee
             elif agent == "rule":
                 agent_obj = RuleAgent()
             elif agent == "raw_llm":
-                agent_obj = RawLLMAgent(model_name=model, api_base=api_base, schema_mode=schema_mode)
+                agent_obj = RawLLMAgent(
+                    model_name=model,
+                    api_base=api_base,
+                    schema_mode=schema_mode,
+                    max_output_tokens=max_output_tokens,
+                )
             else:
                 agent_obj = RuleAgent()
 
