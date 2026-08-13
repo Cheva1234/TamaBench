@@ -174,4 +174,6 @@ class WorldState:
                 for s in self.shop_items_available
             ],
             state_hash=self.compute_hash(),
+            scenario_id=self.scenario_id,
+            scenario_version=self.scenario_version,
         )

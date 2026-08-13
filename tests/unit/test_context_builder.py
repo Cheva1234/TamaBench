@@ -22,3 +22,13 @@ def test_prompt_explains_fullness_direction_and_continuous_health_damage():
     assert "health decreases continuously" in prompt
     assert "3-hour sleep removes about 54 hunger" in prompt
     assert "feed first when fullness is low" in prompt
+
+
+def test_prompt_gives_small_models_minimal_valid_json_examples():
+    observation = TamaEnv(mode=BenchmarkMode.ACCELERATED).reset(seed=42)
+
+    prompt = ContextBuilder.build_prompt(observation, [])
+
+    assert "prediction and trace fields are optional" in prompt.lower()
+    assert '{"action":"feed"}' in prompt
+    assert '{"action":"wait","minutes":60}' in prompt

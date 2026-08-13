@@ -3,6 +3,7 @@
 import json
 
 from tamabench.schemas.observation import Observation
+from tamabench.env.scenarios import get_config_for_scenario
 
 
 class ContextBuilder:
@@ -19,6 +20,9 @@ class ContextBuilder:
         recent = recent_event_descriptions[-cls.MAX_RECENT_EVENTS:]
         events = "\n".join(f"- {event}" for event in recent) or "- none"
         state = json.dumps(observation.to_dict(), separators=(",", ":"))
+        config = get_config_for_scenario(observation.scenario_id)
+        simulated_days = config.max_simulated_minutes / 1440
+        day_label = f"{simulated_days:g} simulated day{'s' if simulated_days != 1 else ''}"
 
         schema = (
             '{"action":"feed|play|clean|heal|sleep|wake|wait|work|buy|observe",'
@@ -29,7 +33,8 @@ class ContextBuilder:
             schema = "one provider-constrained JSON object using the TamaBench V1 schema"
 
         return f"""GOAL:
-Keep the pet alive for 3 simulated days while managing money, energy, and supplies.
+Keep the pet alive for {day_label} while managing money, energy, and supplies.
+Difficulty: {config.name}
 
 STATE:
 {state}
@@ -39,10 +44,18 @@ feed consumes food and increases hunger/fullness; clean restores cleanliness; he
 play raises happiness; sleep(hours=3,5,8), wait(minutes), and work(job_id) block and fast-forward;
 buy(item,amount) purchases supplies; wake and observe advance a short time.
 
+SMALL-MODEL OUTPUT RULE:
+The prediction and trace fields are optional. Omit them unless you can follow
+their exact nested schema. These are valid minimal outputs:
+{{"action":"feed"}}
+{{"action":"wait","minutes":60}}
+{{"action":"sleep","hours":3}}
+Never put the full observation inside prediction, and never make trace a string.
+
 WORLD RULES:
 Hunger is a fullness meter, not a starvation score: 0 means starving and 100 means fully fed.
 Feeding increases hunger by 35 and consumes one food; do not feed when fullness is
-already high because food is limited. Hunger decreases by 18 per simulated hour
+already high (70 or more) because food is limited. Hunger decreases by 18 per simulated hour
 and is capped at 0. While hunger is below 15, health decreases continuously by
 0.2 per simulated minute (12 per hour), not just once. Before any time-based
 action, estimate hunger at completion: a 3-hour sleep removes about 54 hunger, so

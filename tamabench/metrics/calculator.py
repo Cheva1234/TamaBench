@@ -71,10 +71,15 @@ class BenchmarkMetricsCalculator:
             outcome_row = cursor.fetchone()
 
         total_decisions = len(decisions)
+        survived = bool(
+            outcome_row["survived"]
+            if outcome_row is not None
+            else run_row["survived"]
+        )
         if total_decisions == 0:
             return EpisodeMetrics(
                 run_id=run_id,
-                survived=bool(run_row["survived"]),
+                survived=survived,
                 simulated_days=0.0,
                 avg_health=100.0,
                 min_health=100.0,
@@ -146,7 +151,7 @@ class BenchmarkMetricsCalculator:
 
         return EpisodeMetrics(
             run_id=run_id,
-            survived=bool(run_row["survived"]),
+            survived=survived,
             simulated_days=round(simulated_days, 2),
             avg_health=round(avg_health, 1),
             min_health=round(min_health, 1),

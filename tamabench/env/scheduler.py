@@ -25,9 +25,12 @@ class EventScheduler:
         self.rng = random.Random(seed)
         self.scheduled_events: list[WorldEvent] = []
 
-    def seed_initial_events(self, max_minutes: int = 43200):
+    def seed_initial_events(self, max_minutes: int = 43200, sickness_events: bool = True):
         """Generates deterministic random events for the simulation horizon (up to 30 simulated days)."""
         self.scheduled_events.clear()
+
+        if not sickness_events:
+            return
 
         # Schedule Random Sickness Events (e.g. 1-2 per 3 days)
         current = self.rng.randint(720, 1440)

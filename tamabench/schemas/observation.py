@@ -59,6 +59,8 @@ class Observation(BaseModel):
     jobs_available: list[JobObservation]
     shop_items_available: list[ShopItemObservation]
     state_hash: str = Field(description="SHA-256 state snapshot hash for replay & verification")
+    scenario_id: str = Field(default="standard_v1", description="Reproducible scenario identifier")
+    scenario_version: int = Field(default=1, ge=1, description="Scenario schema version")
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump()

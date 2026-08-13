@@ -58,6 +58,23 @@ def test_raw_llm_agent_uses_configured_output_limit_and_recovers_truncation():
     assert agent.last_decision.first_failure_type == ErrorType.OUTPUT_TRUNCATED.value
 
 
+def test_raw_llm_agent_passes_reasoning_effort_to_runtime():
+    runtime = FakeRuntime(
+        [
+            ModelGenerationResponse(
+                content=json.dumps({"action": "wait", "minutes": 30}),
+                finish_reason="stop",
+                output_tokens=12,
+            )
+        ]
+    )
+    agent = RawLLMAgent(runtime=runtime, reasoning_effort="none", max_retries=0)
+
+    agent.select_action(TamaEnv().reset(seed=42))
+
+    assert runtime.payloads[0]["reasoning_effort"] == "none"
+
+
 def test_exhausted_length_generation_is_not_reported_as_invalid_json():
     runtime = FakeRuntime(
         [

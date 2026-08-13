@@ -9,6 +9,7 @@ from tamabench.env.dynamics import DynamicsEngine
 from tamabench.env.economy import EconomySystem
 from tamabench.env.scheduler import EventScheduler
 from tamabench.env.time_engine import TimeEngine, BenchmarkMode
+from tamabench.env.scenarios import get_config_for_scenario, get_difficulty_config
 from tamabench.schemas.observation import Observation
 from tamabench.schemas.actions import ActionProposal, StepResult
 from tamabench.validation.syntax_validator import SyntaxValidator
@@ -30,14 +31,23 @@ class TamaEnv:
         seed: int = 42,
         scenario_id: str = "standard_v1",
         scenario_version: int = 1,
+        difficulty: str | None = None,
     ) -> Observation:
         """Resets environment to reproducible initial state using `seed`."""
+        config = (
+            get_difficulty_config(difficulty)
+            if difficulty is not None
+            else get_config_for_scenario(scenario_id)
+        )
+        if difficulty is not None:
+            scenario_id = config.scenario_id
+
         self.state = WorldState(
             total_minutes=0,
-            agent=AgentState(money=30, energy=100, current_activity="idle"),
+            agent=AgentState(money=config.initial_money, energy=100, current_activity="idle"),
             pet=PetState(
                 health=100.0,
-                hunger=80.0,
+                hunger=config.initial_fullness,
                 energy=80.0,
                 happiness=70.0,
                 cleanliness=90.0,
@@ -45,7 +55,7 @@ class TamaEnv:
                 is_sleeping=False,
                 age=0,
             ),
-            inventory=Inventory(food=1, medicine=0),
+            inventory=Inventory(food=config.initial_food, medicine=config.initial_medicine),
             jobs_available=EconomySystem.get_default_jobs(),
             shop_items_available=EconomySystem.get_default_shop(),
             benchmark_version="1.1.0",
@@ -55,7 +65,10 @@ class TamaEnv:
             seed=seed,
         )
         self.scheduler = EventScheduler(seed=seed)
-        self.scheduler.seed_initial_events()
+        self.scheduler.seed_initial_events(
+            max_minutes=config.max_simulated_minutes,
+            sickness_events=config.sickness_events,
+        )
         self.terminated = False
         self.termination_reason = ""
         self.event_history = []

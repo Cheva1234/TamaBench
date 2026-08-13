@@ -53,16 +53,22 @@ class RawLLMAgent(BaseAgent):
         timeout: float = 120.0,
         runtime: Optional[ModelRuntime] = None,
         keep_alive: str | int = -1,
+        reasoning_effort: Optional[str] = None,
     ):
         super().__init__(name=f"RawLLM({model_name})")
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be greater than 0")
+        if reasoning_effort not in {None, "none", "low", "medium", "high"}:
+            raise ValueError(
+                "reasoning_effort must be one of: none, low, medium, high, or None"
+            )
 
         self.model_name = model_name
         self.schema_mode = schema_mode
         self.temperature = temperature
         self.max_retries = max_retries
         self.max_output_tokens = max_output_tokens
+        self.reasoning_effort = reasoning_effort
         self.recent_events: list[str] = []
         self.last_compute: ComputeClock = ComputeClock()
         self.last_reasoning = ""
@@ -139,6 +145,9 @@ class RawLLMAgent(BaseAgent):
             "temperature": self.temperature,
             "max_tokens": self.max_output_tokens,
         }
+
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
 
         if self.schema_mode == "provider_constrained":
             payload["response_format"] = {"type": "json_object"}

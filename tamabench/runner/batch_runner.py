@@ -8,6 +8,7 @@ import uuid
 from tamabench.agents.base import BaseAgent, DecisionMetadata
 from tamabench.env.core import TamaEnv
 from tamabench.env.time_engine import BenchmarkMode
+from tamabench.env.scenarios import get_difficulty_config
 from tamabench.logging.file_logger import FileLogger
 from tamabench.logging.logger_process import LoggerProcess
 from tamabench.metrics.calculator import BenchmarkMetricsCalculator, EpisodeMetrics
@@ -23,10 +24,14 @@ class BatchRunner:
         db_path: str = "tamabench_results.db",
         event_path: str = "tamabench_events.jsonl",
         mode: BenchmarkMode = BenchmarkMode.LOGICAL,
+        max_stalled_decisions: int = 5,
     ):
+        if max_stalled_decisions <= 0:
+            raise ValueError("max_stalled_decisions must be greater than 0")
         self.db_path = db_path
         self.event_path = event_path
         self.mode = mode
+        self.max_stalled_decisions = max_stalled_decisions
         self.logger = LoggerProcess(db_path=db_path, event_path=event_path)
         self.logger.start()
         self._warmed_agents: set[int] = set()
@@ -44,13 +49,22 @@ class BatchRunner:
         self,
         agent: BaseAgent,
         seed: int = 42,
-        max_simulated_minutes: int = 4320,
+        max_simulated_minutes: int | None = None,
         scenario_id: str = "standard_v1",
         scenario_version: int = 1,
         live_monitor: bool = False,
         max_consecutive_failures: int = 5,
+        difficulty: str = "standard",
     ) -> EpisodeMetrics:
         """Execute an episode, making exactly one agent call per decision boundary."""
+        difficulty_config = get_difficulty_config(difficulty)
+        if difficulty != "standard" and scenario_id == "standard_v1":
+            scenario_id = difficulty_config.scenario_id
+        episode_limit = (
+            max_simulated_minutes
+            if max_simulated_minutes is not None
+            else difficulty_config.max_simulated_minutes
+        )
         episode_started = time.perf_counter()
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -110,8 +124,9 @@ class BatchRunner:
         consecutive_failures = 0
         aborted = False
         termination_reason = None
+        stalled_decisions = 0
 
-        while env.state.total_minutes < max_simulated_minutes and not env.terminated:
+        while env.state.total_minutes < episode_limit and not env.terminated:
             # A future environment implementation may leave a blocking action
             # pending. The runner advances it without asking the agent again.
             if not env.requires_decision():
@@ -148,6 +163,7 @@ class BatchRunner:
             ReferencePolicyEvaluator.evaluate_decision(env.state, proposal)
 
             simulation_started = time.perf_counter()
+            previous_total_minutes = env.state.total_minutes
             # `commit` is the explicit decision-boundary API. Blocking actions
             # advance analytically inside this call and never re-enter the loop.
             step_res = env.commit(proposal if proposal is not None else raw_output)
@@ -329,6 +345,26 @@ class BatchRunner:
                     state_hash=step_res.state_hash,
                 )
                 break
+
+            if env.state.total_minutes == previous_total_minutes:
+                stalled_decisions += 1
+            else:
+                stalled_decisions = 0
+
+            if stalled_decisions >= self.max_stalled_decisions and not env.terminated:
+                env.terminated = True
+                env.termination_reason = "agent_stalled"
+                self.logger.log_event(
+                    run_id=run_id,
+                    event_type="AGENT_STALLED",
+                    simulation_minute=env.state.total_minutes,
+                    details={
+                        "step_index": step_index,
+                        "consecutive_zero_time_decisions": stalled_decisions,
+                        "termination_reason": env.termination_reason,
+                    },
+                    state_hash=env.state.compute_hash(),
+                )
 
         if live_reporter:
             live_reporter.stop()

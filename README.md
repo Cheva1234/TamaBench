@@ -272,6 +272,7 @@ Planned expansion: Average Health, Planning Failures, Resource Failures, Truncat
 - ✅ Rule-based baseline agent for reference comparison
 - ✅ Tested with: `llama3.2:3b`, `qwen2.5:7b`, `lfm2.5-2.6b`
 - ✅ Configurable generation limit (`--max-output-tokens`, default `4096`)
+- ✅ Configurable reasoning budget (`--reasoning-effort`, default `none`)
 - ✅ Persistent model residency with Ollama `keep_alive` and warmup telemetry
 - ✅ Inference only at decision boundaries; blocking actions use analytical time-skips
 - ✅ Separate first-pass schema, recovery, retry, and truncation metrics
@@ -324,6 +325,39 @@ python -m tamabench.cli run --agent rule --episodes 1
 # Run the Harness V1 agent (wraps a model; harness handles routine economy)
 python -m tamabench.cli run --agent harness_v1 --model <your-model> --episodes 1
 ```
+
+### Difficulty Levels
+
+TamaBench provides a baseline range so smaller models can be measured before
+being placed on the full benchmark:
+
+| Difficulty | Horizon | Starting resources | Purpose |
+|---|---:|---|---|
+| `easy` | 1 day | $100, 5 food, 1 medicine, full hunger | Baseline track for small local models |
+| `standard` | 3 days | $30, 1 food, no medicine | Main benchmark and model comparison track |
+| `hard` | 7 days | $20, 1 food, no medicine | Long-horizon stress test |
+
+For a 4GB-class local baseline, start with `qwen3.5:4b` on the easy track:
+
+```bash
+ollama pull qwen3.5:4b
+python -m tamabench.cli run \
+  --agent raw_llm \
+  --model qwen3.5:4b \
+  --difficulty easy \
+  --reasoning-effort none \
+  --episodes 1 \
+  --display live
+```
+
+Qwen 3.5 enables thinking by default. `--reasoning-effort none` keeps this
+baseline focused on the action loop and avoids uncontrolled reasoning latency.
+Use `low`, `medium`, or `high` to measure a reasoning-enabled run.
+
+After a model can consistently survive `easy`, run the same model on
+`standard`, then `hard`. Report the difficulty with every result; scores from
+different difficulty levels should not be compared as if they were the same
+task.
 
 ### Watch the Reasoning Log (Live)
 
