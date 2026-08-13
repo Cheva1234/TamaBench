@@ -41,6 +41,36 @@ TamaBench closes this gap by requiring the model to:
 | **Adaptation** | Random sickness events force reactive replanning |
 | **Avoiding catastrophic failures** | Health reaching 0 terminates the episode immediately |
 
+## Designed for Small-Model Autonomous Agents
+
+TamaBench is especially useful for evaluating **small, local, and quantized model weights** running on consumer hardware. The goal is not only to ask whether a model can produce a correct answer, but whether it can repeatedly run an autonomous control loop:
+
+```text
+observe state → choose an action → use a tool → wait for consequences → observe again
+```
+
+This loop is common in practical automation systems. A model used for an autonomous task may need to:
+
+| Autonomous task | What the model must do |
+|---|---|
+| **IoT monitoring** | Read sensor state, detect abnormal conditions, trigger an actuator or alert, and continue monitoring |
+| **Email automation** | Inspect incoming messages, classify priority, draft or send a response, avoid duplicate actions, and escalate uncertain cases |
+| **Home automation** | Balance temperature, energy usage, schedules, and safety constraints over time |
+| **Server and service monitoring** | Read health signals, restart a failed component when safe, collect evidence, and notify an operator when recovery fails |
+| **Workflow automation** | Break a task into steps, call tools in the correct order, manage budgets and deadlines, and recover from errors |
+
+The Tamagotchi environment is a controlled sandbox for these same capabilities. It tests whether a model can:
+
+- maintain state across many decisions;
+- choose actions based on changing observations;
+- use structured JSON as a tool/action interface;
+- plan around time, resources, and delayed consequences;
+- react to unexpected events;
+- avoid unsafe or irreversible actions; and
+- complete tasks efficiently with limited inference calls and token usage.
+
+TamaBench does **not** claim that surviving the pet simulation directly proves that a model can safely operate an email account, IoT device, or production server. Those applications require their own tools, permissions, safety policies, and domain-specific tests. TamaBench measures the reusable agent skills underneath them: observation, planning, tool use, recovery, and long-horizon control.
+
 ### ✅ Pros
 
 - **Fully local** — runs with [Ollama](https://ollama.com/) on consumer hardware, no API keys required
