@@ -12,6 +12,6 @@ def test_runner_uses_easy_difficulty_horizon(tmp_path):
     runner.close()
 
     # Blocking actions commit atomically, so the final action may cross the
-    # one-day boundary by at most its duration.
-    assert 1.0 <= metrics.simulated_days <= 1.1
+    # half-day boundary by at most its duration.
+    assert 0.5 <= metrics.simulated_days <= 0.6
     assert metrics.survived is True

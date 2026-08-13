@@ -9,7 +9,7 @@ def test_difficulty_presets_define_a_baseline_range():
     standard = get_difficulty_config("standard")
     hard = get_difficulty_config("hard")
 
-    assert easy.max_simulated_minutes == 1440
+    assert easy.max_simulated_minutes == 720
     assert easy.initial_money == 100
     assert easy.initial_food == 5
     assert easy.sickness_events is False
@@ -37,5 +37,5 @@ def test_environment_applies_selected_difficulty_and_prompt_horizon():
     assert env.scheduler.scheduled_events == []
 
     prompt = ContextBuilder.build_prompt(observation, [])
-    assert "Keep the pet alive for 1 simulated day" in prompt
+    assert "Keep the pet alive for 0.5 simulated days" in prompt
     assert "Difficulty: easy" in prompt

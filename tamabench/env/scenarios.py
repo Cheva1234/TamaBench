@@ -19,7 +19,7 @@ DIFFICULTY_PRESETS: dict[str, DifficultyConfig] = {
     "easy": DifficultyConfig(
         name="easy",
         scenario_id="easy_v1",
-        max_simulated_minutes=1440,
+        max_simulated_minutes=720,
         initial_money=100,
         initial_food=5,
         initial_medicine=1,

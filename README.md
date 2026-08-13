@@ -333,7 +333,7 @@ being placed on the full benchmark:
 
 | Difficulty | Horizon | Starting resources | Purpose |
 |---|---:|---|---|
-| `easy` | 1 day | $100, 5 food, 1 medicine, full hunger | Baseline track for small local models |
+| `easy` | 0.5 day | $100, 5 food, 1 medicine, full hunger | Short baseline track for small local models |
 | `standard` | 3 days | $30, 1 food, no medicine | Main benchmark and model comparison track |
 | `hard` | 7 days | $20, 1 food, no medicine | Long-horizon stress test |
 
