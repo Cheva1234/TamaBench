@@ -80,7 +80,7 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
             click.echo(f"[{ep+1:03d}/{episodes:03d}] Seed #{current_seed} | Days {metrics.simulated_days:.1f} | Health {metrics.avg_health:.1f} | Survived: {metrics.survived}")
         elif display == "quiet" and (ep + 1) % 10 == 0:
             click.echo(f"Completed {ep + 1} / {episodes} episodes")
-        elif not live_flag and display != "quiet":
+        elif display != "quiet":
             reporter.print_summary(metrics, model_name=agent_obj.name, episodes=1)
 
     runner.close()

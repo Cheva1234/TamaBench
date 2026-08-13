@@ -90,14 +90,19 @@ class LiveReporter:
         # Update Economy
         if proposal and proposal.action == "work" and step_result.success:
             j_id = proposal.job_id or ""
-            r = 40 if j_id == "cafe_shift" else (90 if j_id == "delivery" else 20)
-            self.total_income += r
+            job = next((job for job in observation.jobs_available if job.id == j_id), None)
+            if job:
+                self.total_income += job.reward
 
         if proposal and proposal.action == "buy" and step_result.success:
             item = proposal.item or ""
             amt = proposal.amount or 1
-            cost = 20 if item == "food" else 50
-            self.total_spending += cost * amt
+            shop_item = next(
+                (shop_item for shop_item in observation.shop_items_available if shop_item.item == item),
+                None,
+            )
+            if shop_item:
+                self.total_spending += shop_item.cost * amt
 
         if self.live:
             layout = self._build_layout(observation, step_result)
