@@ -48,6 +48,7 @@ class BatchRunner:
         scenario_id: str = "standard_v1",
         scenario_version: int = 1,
         live_monitor: bool = False,
+        max_consecutive_failures: int = 5,
     ) -> EpisodeMetrics:
         """Execute an episode, making exactly one agent call per decision boundary."""
         episode_started = time.perf_counter()
@@ -106,6 +107,9 @@ class BatchRunner:
         jobs_failed = 0
         health_samples = [obs.pet.health]
         happiness_samples = [obs.pet.happiness]
+        consecutive_failures = 0
+        aborted = False
+        termination_reason = None
 
         while env.state.total_minutes < max_simulated_minutes and not env.terminated:
             # A future environment implementation may leave a blocking action
@@ -148,6 +152,11 @@ class BatchRunner:
             # advance analytically inside this call and never re-enter the loop.
             step_res = env.commit(proposal if proposal is not None else raw_output)
             simulation_ms = (time.perf_counter() - simulation_started) * 1000.0
+
+            if step_res.success:
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
 
             post_obs = step_res.observation
             health_samples.append(post_obs.pet.health)
@@ -305,11 +314,27 @@ class BatchRunner:
                 state_hash=step_res.state_hash,
             )
 
+            if consecutive_failures >= max_consecutive_failures:
+                aborted = True
+                termination_reason = f"max_consecutive_failures={max_consecutive_failures}"
+                self.logger.log_event(
+                    run_id=run_id,
+                    event_type="EPISODE_TERMINATED",
+                    simulation_minute=env.state.total_minutes,
+                    details={
+                        "reason": termination_reason,
+                        "consecutive_failures": consecutive_failures,
+                        "step_index": step_index,
+                    },
+                    state_hash=step_res.state_hash,
+                )
+                break
+
         if live_reporter:
             live_reporter.stop()
 
         ended_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        survived = not env.terminated
+        survived = (not env.terminated) and (not aborted)
         sim_days = env.state.total_minutes / 1440.0
         avg_health = sum(health_samples) / len(health_samples)
         min_health = min(health_samples)
@@ -331,6 +356,7 @@ class BatchRunner:
                 "total_spending": total_spending,
                 "jobs_completed": jobs_completed,
                 "jobs_failed": jobs_failed,
+                "termination_reason": termination_reason,
             }
         )
         self.logger.log_event(
@@ -341,6 +367,8 @@ class BatchRunner:
                 "survived": survived,
                 "duration_minutes": env.state.total_minutes,
                 "episode_wall_time_ms": (time.perf_counter() - episode_started) * 1000.0,
+                "termination_reason": termination_reason,
+                "aborted": aborted,
             },
             state_hash=env.state.compute_hash(),
         )

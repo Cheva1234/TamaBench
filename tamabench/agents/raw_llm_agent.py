@@ -50,6 +50,7 @@ class RawLLMAgent(BaseAgent):
         temperature: float = 0.2,
         max_retries: int = 2,
         max_output_tokens: int = 4096,
+        timeout: float = 120.0,
         runtime: Optional[ModelRuntime] = None,
         keep_alive: str | int = -1,
     ):
@@ -73,6 +74,7 @@ class RawLLMAgent(BaseAgent):
             api_base=api_base,
             api_key=api_key,
             keep_alive=keep_alive,
+            timeout=timeout,
         )
 
     @property

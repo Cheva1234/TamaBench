@@ -24,6 +24,7 @@ def cli():
 @click.option("--model", type=str, default="qwen2.5:3b", help="Model name if using raw_llm agent")
 @click.option("--api-base", type=str, default="http://localhost:11434/v1", help="OpenAI-compatible API base URL")
 @click.option("--max-output-tokens", type=click.IntRange(min=1), default=4096, show_default=True, help="Maximum generated tokens per model attempt")
+@click.option("--timeout", type=float, default=120.0, show_default=True, help="Per-request timeout in seconds (raise for thinking models)")
 @click.option("--episodes", type=int, default=1, help="Number of benchmark episodes to run")
 @click.option("--seed-start", type=int, default=42, help="Starting RNG seed")
 @click.option("--schema-mode", type=click.Choice(["raw_json", "provider_constrained"]), default="raw_json", help="Schema benchmark mode")
@@ -32,7 +33,7 @@ def cli():
 @click.option("--model-lifecycle", type=click.Choice(["warm", "cold"]), default="warm", help="Model lifecycle management mode")
 @click.option("--db-path", type=str, default="tamabench_results.db", help="SQLite results database path")
 @click.option("--event-path", type=str, default="tamabench_events.jsonl", help="JSONL event stream file path")
-def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_mode, display, speed, model_lifecycle, db_path, event_path):
+def run(agent, model, api_base, max_output_tokens, timeout, episodes, seed_start, schema_mode, display, speed, model_lifecycle, db_path, event_path):
     """Executes a benchmark experiment run."""
     mode_enum = BenchmarkMode.ACCELERATED if speed == "accelerated" else BenchmarkMode.LOGICAL
     runner = BatchRunner(db_path=db_path, event_path=event_path, mode=mode_enum)
@@ -49,6 +50,7 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                 api_base=api_base,
                 schema_mode=schema_mode,
                 max_output_tokens=max_output_tokens,
+                timeout=timeout,
             )
         elif agent == "harness_v1":
             shared_agent = HarnessV1Agent(
@@ -57,6 +59,7 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                     api_base=api_base,
                     schema_mode=schema_mode,
                     max_output_tokens=max_output_tokens,
+                    timeout=timeout,
                 )
             )
         elif agent == "rule":
@@ -80,6 +83,7 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                     api_base=api_base,
                     schema_mode=schema_mode,
                     max_output_tokens=max_output_tokens,
+                    timeout=timeout,
                 )
             elif agent == "harness_v1":
                 agent_obj = HarnessV1Agent(
@@ -88,6 +92,7 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                         api_base=api_base,
                         schema_mode=schema_mode,
                         max_output_tokens=max_output_tokens,
+                        timeout=timeout,
                     )
                 )
             else:
