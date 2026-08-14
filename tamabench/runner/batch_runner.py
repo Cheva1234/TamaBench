@@ -57,6 +57,7 @@ class BatchRunner:
 
         env = TamaEnv(mode=self.mode)
         obs = env.reset(seed=seed, scenario_id=scenario_id, scenario_version=scenario_version)
+        agent.reset_episode()
         warmup_ms = self._warm_agent(agent)
 
         live_reporter = (

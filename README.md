@@ -2,13 +2,40 @@
 
 # 🐾 TamaBench
 
-**A Tamagotchi-style survival benchmark for evaluating autonomous LLM agents**
+### Small Model Autonomy Benchmark
+
+**A lightweight long-horizon benchmark for small and local LLM agents — and the automation harnesses that extend them.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-compatible-black.svg)](https://ollama.com/)
 
 </div>
+
+---
+
+## Can a 2.6B model autonomously survive for days?
+
+TamaBench places an AI agent inside a persistent sandbox where it must:
+
+- care for a virtual pet
+- work and earn money
+- manage limited resources
+- make structured tool calls
+- plan around delayed consequences
+- recover from mistakes
+
+TamaBench measures:
+
+**Planning · Tool Reliability · Resource Management · Failure Modes · Tokens · Latency · Compute Efficiency**
+
+## The Bigger Question
+
+> How much autonomy can we extract from a small model before we need a larger model?
+
+And:
+
+> How much can an automation harness close that gap?
 
 ---
 
@@ -23,6 +50,26 @@ The agent must **survive 3 simulated days** by:
 - Reacting to random events like sickness
 
 This tests **real-world agentic capabilities** — not text generation quality, but the model's ability to **plan, prioritize, manage resources, and adapt under pressure**.
+
+The Tamagotchi-style environment is the **simulation mechanism**, not the whole identity of the project. The benchmark itself is about long-horizon autonomy: persistent decision making, tool/JSON reliability, planning under delayed consequences, resource management, failure recovery, context efficiency, and compute efficiency.
+
+### The Simulation Loop
+
+```text
+ MODEL
+   ↓
+ DECIDE
+   ↓
+ WORK / CARE / WAIT
+   ↓
+ WORLD FAST-FORWARD
+   ↓
+ CONSEQUENCES
+   ↓
+ NEXT WAKE
+   ↓
+ MODEL
+```
 
 ### Hunger Meter Semantics
 
@@ -97,6 +144,104 @@ TamaBench does **not** claim that surviving the pet simulation directly proves t
 
 ---
 
+## Harness Evaluation: The Differentiator
+
+TamaBench measures not only:
+
+```text
+Model A  vs  Model B
+```
+
+but also:
+
+```text
+Raw Model  vs  Raw Model + Harness
+```
+
+This is one of the main distinguishing features of TamaBench — it answers:
+
+> Does better automation architecture compensate for smaller model size?
+
+### Harness V1
+
+The first harness is intentionally minimal:
+
+```text
+ WAKE
+   ↓
+ OBSERVE
+   ↓
+ DECIDE
+   ↓
+ CALCULATE NEXT WAKE
+   ↓
+ SCHEDULE
+   ↓
+ SLEEP
+   ↓
+ WAKE
+```
+
+Three core stages:
+
+```text
+1. DECIDE
+2. CALCULATE
+3. SCHEDULE
+```
+
+The model does not need to run continuously — it wakes only when a care decision is required. Routine economy (work, buy, wait) is handled deterministically by the harness's reference policy, creating a controlled experiment around:
+
+- API call reduction
+- Token reduction
+- Compute reduction
+- Better timing
+- Better long-horizon survival
+
+…without changing model size.
+
+### Signature Experiment: Same Model, Different Harness
+
+```text
+LFM2.5 2.6B Raw
+ ↓
+LFM2.5 + Wake Scheduler
+ ↓
+LFM2.5 + Harness V1
+```
+
+Keep identical: model, quantization, prompt budget, environment, scenario, seed set, temperature. Then compare:
+
+```text
+Survival Rate
+API Calls / Day
+Tokens / Day
+Planning Failures
+Schema Failures
+Resource Failures
+Latency
+```
+
+The key result becomes:
+
+> **How much effective autonomy came from the harness rather than the model?**
+
+---
+
+## Current Results
+
+| Model | Survival | Schema | Calls / Day | Tokens / Day |
+|---|---:|---:|---:|---:|
+| RandomSchema | TBD | TBD | — | — |
+| RandomValid | TBD | 100% | — | — |
+| RuleAgent | TBD | 100% | — | — |
+| LFM2.5 2.6B Raw | TBD | TBD | TBD | TBD |
+| LFM2.5 + Harness V1 | TBD | TBD | TBD | TBD |
+
+Planned expansion: Average Health, Planning Failures, Resource Failures, Truncation Rate, Average Latency, Reasoning Tokens, Cost / Simulated Day.
+
+---
+
 ## Current State (v1.1 runtime)
 
 > ⚠️ **Early Research Preview** — APIs and scoring may change between minor versions.
@@ -115,6 +260,7 @@ TamaBench does **not** claim that surviving the pet simulation directly proves t
 - ✅ Inference only at decision boundaries; blocking actions use analytical time-skips
 - ✅ Separate first-pass schema, recovery, retry, and truncation metrics
 - ✅ Reference (one-minute) and accelerated (event-driven) modes with state-hash equivalence tests
+- ✅ **Harness V1 agent** (`--agent harness_v1`): DECIDE → CALCULATE → SCHEDULE loop that wakes the model only for care decisions and handles routine economy deterministically (fewer API calls, same survival)
 
 ### Known Limitations
 - ❌ No multi-agent or parallel episode runner yet
@@ -158,6 +304,9 @@ python -m tamabench.cli run --agent raw_llm --model qwen2.5:7b --episodes 3
 
 # Run the rule-based baseline (no model needed)
 python -m tamabench.cli run --agent rule --episodes 1
+
+# Run the Harness V1 agent (wraps a model; harness handles routine economy)
+python -m tamabench.cli run --agent harness_v1 --model <your-model> --episodes 1
 ```
 
 ### Watch the Reasoning Log (Live)
@@ -204,7 +353,7 @@ sqlite3 tamabench_results.db "
 TamaBench/
 ├── tamabench/
 │   ├── env/              # Simulation engine (core, dynamics, scheduler, economy)
-│   ├── agents/           # Agent implementations (rule-based, raw LLM)
+│   ├── agents/           # Agent implementations (rule-based, raw LLM, harness V1)
 │   ├── context/          # System prompt builder
 │   ├── validation/       # JSON schema + environment precondition validators
 │   ├── logging/          # File logger, DB logger, event stream
@@ -243,5 +392,5 @@ An episode is scored across 5 dimensions:
 ---
 
 <div align="center">
-<sub>Built as part of Project Aether · TamaBench v0.1.0</sub>
+<sub>Small Model. Long Horizon. Persistent Consequences.</sub>
 </div>

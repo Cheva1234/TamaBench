@@ -43,6 +43,15 @@ class BaseAgent(ABC):
     def reset_decision_metadata(self) -> None:
         self.last_decision = DecisionMetadata()
 
+    def reset_episode(self) -> None:
+        """Hook called by the runner at the start of every episode.
+
+        Agents that carry cross-decision state (e.g. harness schedulers)
+        must clear it here so state never leaks between episodes. Baselines
+        have a no-op implementation.
+        """
+        return None
+
     def warmup(self) -> float:
         """Warm a model if the agent owns one; baselines have no-op warmup."""
         return 0.0

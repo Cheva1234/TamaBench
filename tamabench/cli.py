@@ -6,6 +6,7 @@ from tamabench.agents.random_schema_agent import RandomSchemaAgent
 from tamabench.agents.random_valid_agent import RandomValidAgent
 from tamabench.agents.rule_agent import RuleAgent
 from tamabench.agents.raw_llm_agent import RawLLMAgent
+from tamabench.agents.harness_v1_agent import HarnessV1Agent
 from tamabench.runner.batch_runner import BatchRunner
 from tamabench.metrics.reporter import BenchmarkReporter
 from tamabench.logging.replay import ReplayEngine
@@ -19,7 +20,7 @@ def cli():
 
 
 @cli.command()
-@click.option("--agent", type=click.Choice(["random_schema", "random_valid", "rule", "raw_llm"]), default="rule", help="Agent baseline type")
+@click.option("--agent", type=click.Choice(["random_schema", "random_valid", "rule", "raw_llm", "harness_v1"]), default="rule", help="Agent baseline type")
 @click.option("--model", type=str, default="qwen2.5:3b", help="Model name if using raw_llm agent")
 @click.option("--api-base", type=str, default="http://localhost:11434/v1", help="OpenAI-compatible API base URL")
 @click.option("--max-output-tokens", type=click.IntRange(min=1), default=4096, show_default=True, help="Maximum generated tokens per model attempt")
@@ -49,6 +50,15 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                 schema_mode=schema_mode,
                 max_output_tokens=max_output_tokens,
             )
+        elif agent == "harness_v1":
+            shared_agent = HarnessV1Agent(
+                model_agent=RawLLMAgent(
+                    model_name=model,
+                    api_base=api_base,
+                    schema_mode=schema_mode,
+                    max_output_tokens=max_output_tokens,
+                )
+            )
         elif agent == "rule":
             shared_agent = RuleAgent()
 
@@ -70,6 +80,15 @@ def run(agent, model, api_base, max_output_tokens, episodes, seed_start, schema_
                     api_base=api_base,
                     schema_mode=schema_mode,
                     max_output_tokens=max_output_tokens,
+                )
+            elif agent == "harness_v1":
+                agent_obj = HarnessV1Agent(
+                    model_agent=RawLLMAgent(
+                        model_name=model,
+                        api_base=api_base,
+                        schema_mode=schema_mode,
+                        max_output_tokens=max_output_tokens,
+                    )
                 )
             else:
                 agent_obj = RuleAgent()
