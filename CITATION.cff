@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use TamaBench in your research, please cite it as follows."
+title: "TamaBench: A Lightweight Persistent Sandbox Benchmark for Small Language Model Autonomy"
+abstract: >-
+  TamaBench is a lightweight long-horizon benchmark for small and local LLM
+  agents and the automation harnesses that extend them. Agents operate a
+  persistent sandbox (care, work, economy, delayed consequences) and are
+  scored on survival, planning, tool reliability, resource management, and
+  compute efficiency. The benchmark measures how much autonomy can be
+  extracted from a small model before a larger model is needed, and how
+  much an automation harness can close that gap.
+authors:
+  - family-names: Muangsiri
+    given-names: Pichetpong
+    orcid: ""
+keywords:
+  - llm-benchmark
+  - agent-benchmark
+  - small-language-models
+  - local-llm
+  - long-horizon
+  - agent-evaluation
+  - agent-harness
+  - ollama
+date-released: 2026-08-13
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/Cheva1234/TamaBench"
