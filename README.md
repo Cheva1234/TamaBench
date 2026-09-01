@@ -252,6 +252,10 @@ The key result becomes:
 > **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
 
 ---|---:|---:|---:|---:|---:|
+
+> **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
+
+---|---:|---:|---:|---:|---:|
 | `llama3.2:1b` + Harness V1 | SURVIVED | 8,023 | 7.08 | 92.9% | 19,645 |
 | `qwen2.5-coder:7b` + Harness V1 | DIED | 3,084 | 2.02 | 100.0% | 388 |
 | `qwen2.5:3b` + Harness V1 | DIED | 1,908 | 1.00 | 100.0% | 119 |
