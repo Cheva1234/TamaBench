@@ -31,16 +31,9 @@ class TamaEnv:
         seed: int = 42,
         scenario_id: str = "standard_v1",
         scenario_version: int = 1,
-        difficulty: str | None = None,
     ) -> Observation:
         """Resets environment to reproducible initial state using `seed`."""
-        config = (
-            get_difficulty_config(difficulty)
-            if difficulty is not None
-            else get_config_for_scenario(scenario_id)
-        )
-        if difficulty is not None:
-            scenario_id = config.scenario_id
+        config = get_config_for_scenario(scenario_id)
 
         self.state = WorldState(
             total_minutes=0,
@@ -56,8 +49,8 @@ class TamaEnv:
                 age=0,
             ),
             inventory=Inventory(food=config.initial_food, medicine=config.initial_medicine),
-            jobs_available=EconomySystem.get_default_jobs(),
-            shop_items_available=EconomySystem.get_default_shop(),
+            jobs_available=EconomySystem.get_dynamic_jobs(0),
+            shop_items_available=EconomySystem.get_dynamic_shop(0),
             benchmark_version="1.1.0",
             environment_version="1.1.0",
             scenario_id=scenario_id,
@@ -77,6 +70,8 @@ class TamaEnv:
 
     def observe(self) -> Observation:
         """Returns current canonical observation snapshot."""
+        self.state.jobs_available = EconomySystem.get_dynamic_jobs(self.state.total_minutes)
+        self.state.shop_items_available = EconomySystem.get_dynamic_shop(self.state.total_minutes)
         return self.state.to_observation()
 
     def requires_decision(self) -> bool:

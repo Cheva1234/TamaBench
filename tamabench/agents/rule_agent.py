@@ -45,19 +45,23 @@ class RuleAgent(BaseAgent):
             if inv.medicine > 0:
                 proposal = ActionProposal(action="heal")
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
-            elif agent.money >= 75:
-                proposal = ActionProposal(action="buy", item="medicine", amount=1)
-                return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
+            else:
+                med_item = next((i for i in observation.shop_items_available if i.item == "medicine"), None)
+                if med_item and agent.money >= med_item.cost:
+                    proposal = ActionProposal(action="buy", item="medicine", amount=1)
+                    return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
         # 2. High Priority: Feed pet if fullness is low
         if pet.hunger < 50:
             if inv.food > 0:
                 proposal = ActionProposal(action="feed")
                 return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
-            elif agent.money >= 30:
-                amount = min(3, agent.money // 30)
-                proposal = ActionProposal(action="buy", item="food", amount=amount)
-                return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
+            else:
+                food_item = next((i for i in observation.shop_items_available if i.item == "food"), None)
+                if food_item and agent.money >= food_item.cost:
+                    amount = min(3, agent.money // food_item.cost)
+                    proposal = ActionProposal(action="buy", item="food", amount=amount)
+                    return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
         # 3. Priority: Clean pet if dirty
         if pet.cleanliness < 40 and agent.energy >= 5:
@@ -65,7 +69,7 @@ class RuleAgent(BaseAgent):
             return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
         # 4. Work Priority: Earn money if low on food/medicine or cash
-        if inv.food <= 1 or agent.money < 100:
+        if inv.food <= 3 or agent.money < 150:
             # Pick best available job agent has energy for
             affordable_jobs = [j for j in observation.jobs_available if agent.energy >= j.energy_cost]
             if affordable_jobs:

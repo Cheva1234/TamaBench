@@ -31,18 +31,17 @@ def cli():
 @click.option("--schema-mode", type=click.Choice(["raw_json", "provider_constrained"]), default="raw_json", help="Schema benchmark mode")
 @click.option("--display", type=click.Choice(["live", "compact", "quiet"]), default="live", help="Display mode for terminal output")
 @click.option("--speed", type=click.Choice(["accelerated", "reference"]), default="accelerated", help="Execution speed mode")
-@click.option("--difficulty", type=click.Choice(["easy", "standard", "hard"]), default="standard", show_default=True, help="Scenario difficulty preset")
 @click.option("--model-lifecycle", type=click.Choice(["warm", "cold"]), default="warm", help="Model lifecycle management mode")
 @click.option("--db-path", type=str, default="tamabench_results.db", help="SQLite results database path")
 @click.option("--event-path", type=str, default="tamabench_events.jsonl", help="JSONL event stream file path")
-def run(agent, model, api_base, max_output_tokens, timeout, reasoning_effort, episodes, seed_start, schema_mode, display, speed, difficulty, model_lifecycle, db_path, event_path):
+def run(agent, model, api_base, max_output_tokens, timeout, reasoning_effort, episodes, seed_start, schema_mode, display, speed, model_lifecycle, db_path, event_path):
     """Executes a benchmark experiment run."""
     mode_enum = BenchmarkMode.ACCELERATED if speed == "accelerated" else BenchmarkMode.LOGICAL
     runner = BatchRunner(db_path=db_path, event_path=event_path, mode=mode_enum)
     reporter = BenchmarkReporter()
 
     if display != "live":
-        click.echo(f"Starting TamaBench V1 Benchmark: Agent='{agent}', Difficulty='{difficulty}', Speed='{speed}', Display='{display}', Lifecycle='{model_lifecycle}'")
+        click.echo(f"Starting TamaBench V1 Benchmark: Agent='{agent}', Speed='{speed}', Display='{display}', Lifecycle='{model_lifecycle}'")
 
     shared_agent = None
     if model_lifecycle == "warm":
@@ -109,10 +108,9 @@ def run(agent, model, api_base, max_output_tokens, timeout, reasoning_effort, ep
             agent=agent_obj,
             seed=current_seed,
             live_monitor=live_flag,
-            difficulty=difficulty,
         )
         if display == "compact":
-            click.echo(f"[{ep+1:03d}/{episodes:03d}] Difficulty {difficulty} | Seed #{current_seed} | Days {metrics.simulated_days:.1f} | Health {metrics.avg_health:.1f} | Survived: {metrics.survived}")
+            click.echo(f"[{ep+1:03d}/{episodes:03d}] | Seed #{current_seed} | Days {metrics.simulated_days:.1f} | Health {metrics.avg_health:.1f} | Survived: {metrics.survived}")
         elif display == "quiet" and (ep + 1) % 10 == 0:
             click.echo(f"Completed {ep + 1} / {episodes} episodes")
         elif display != "quiet":

@@ -19,7 +19,19 @@ class ContextBuilder:
         """Build one compact prompt without repeating mechanics or schema rules."""
         recent = recent_event_descriptions[-cls.MAX_RECENT_EVENTS:]
         events = "\n".join(f"- {event}" for event in recent) or "- none"
-        state = json.dumps(observation.to_dict(), separators=(",", ":"))
+        # Pi-style minimalist state formatting
+        state_dict = observation.to_dict()
+        # Drop redundant info to save tokens
+        if "state_hash" in state_dict:
+            del state_dict["state_hash"]
+        if "scenario_id" in state_dict:
+            del state_dict["scenario_id"]
+        if "scenario_version" in state_dict:
+            del state_dict["scenario_version"]
+        for item in state_dict.get("shop_items_available", []):
+            if "description" in item:
+                del item["description"]
+        state = json.dumps(state_dict, separators=(",", ":"))
         config = get_config_for_scenario(observation.scenario_id)
         simulated_days = config.max_simulated_minutes / 1440
         day_label = f"{simulated_days:g} simulated day{'s' if simulated_days != 1 else ''}"
@@ -34,8 +46,6 @@ class ContextBuilder:
 
         return f"""GOAL:
 Keep the pet alive for {day_label} while managing money, energy, and supplies.
-Difficulty: {config.name}
-
 STATE:
 {state}
 

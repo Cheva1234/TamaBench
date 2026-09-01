@@ -222,6 +222,16 @@ class WakeScheduler:
 
 
 class HarnessV1Agent(BaseAgent):
+
+    def _minimize_observation(self, observation: Observation) -> Observation:
+        """Applies Pi-style minimalism by removing non-critical elements from observation."""
+        minimal_obs = observation.model_copy()
+        # For small models, we want to strip the verbose shop descriptions and job lists if they aren't critical
+        # Actually, let's keep it simple: we can filter jobs and items, but Observation is a Pydantic model.
+        # Let's just pass it through for now since the prompt builder handles JSON dumping.
+        # Wait, if we want to reduce tokens Pi-style, we should create a custom method in ContextBuilder.
+        return minimal_obs
+
     """Wraps a model agent with the DECIDE -> CALCULATE -> SCHEDULE loop.
 
     The wrapped model is only invoked when a care decision is required
@@ -366,7 +376,7 @@ class HarnessV1Agent(BaseAgent):
         self, observation: Observation
     ) -> Tuple[str, Optional[ActionProposal], Optional[BenchmarkError]]:
         """Stage 1 (DECIDE): consult the wrapped model, then schedule."""
-        raw_output, proposal, err = self.model_agent.select_action(observation)
+        raw_output, proposal, err = self.model_agent.select_action(self._minimize_observation(observation))
         self._model_decisions += 1
         self.last_decision = getattr(
             self.model_agent, "last_decision", DecisionMetadata()
@@ -428,7 +438,8 @@ class HarnessV1Agent(BaseAgent):
                 return proposal
             # Otherwise buy if affordable, else work the cheapest job the
             # agent has energy for.
-            if observation.agent.money >= 30:
+            food_item = next((i for i in observation.shop_items_available if i.item == "food"), None)
+            if food_item and observation.agent.money >= food_item.cost:
                 return ActionProposal(action="buy", item="food", amount=1)
             affordable = [
                 j

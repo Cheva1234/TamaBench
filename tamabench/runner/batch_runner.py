@@ -54,16 +54,12 @@ class BatchRunner:
         scenario_version: int = 1,
         live_monitor: bool = False,
         max_consecutive_failures: int = 5,
-        difficulty: str = "standard",
     ) -> EpisodeMetrics:
         """Execute an episode, making exactly one agent call per decision boundary."""
-        difficulty_config = get_difficulty_config(difficulty)
-        if difficulty != "standard" and scenario_id == "standard_v1":
-            scenario_id = difficulty_config.scenario_id
         episode_limit = (
             max_simulated_minutes
             if max_simulated_minutes is not None
-            else difficulty_config.max_simulated_minutes
+            else 7 * 24 * 60
         )
         episode_started = time.perf_counter()
         run_id = f"run_{uuid.uuid4().hex[:12]}"

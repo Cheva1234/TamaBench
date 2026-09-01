@@ -34,7 +34,9 @@ def test_work_time_skip_action():
     assert res.success is True
     assert res.execution_minutes == 60
     assert env.state.total_minutes == initial_minutes + 60
-    assert env.state.agent.money == initial_money + 25
+    # Dynamic economy gives varying reward based on total_minutes
+    expected_reward = 60
+    assert env.state.agent.money == initial_money + expected_reward
     assert env.state.agent.current_activity == "idle"
 
 
