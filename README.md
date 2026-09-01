@@ -246,8 +246,15 @@ The key result becomes:
 
 ## Current Results
 
-| Model | Survival | Schema | Calls / Day | Tokens / Day |
-|---|---:|---:|---:|---:|
+| Model | Survival | Score | Simulated Days | Final Schema | Output tokens |
+|---|---:|---:|---:|---:|---:|
+| `llama3.2:1b` + Harness V1 | SURVIVED | 8,023 | 7.08 | 92.9% | 19,645 |
+| `qwen2.5-coder:7b` + Harness V1 | DIED | 3,084 | 2.02 | 100.0% | 388 |
+| `qwen2.5:3b` + Harness V1 | DIED | 1,908 | 1.00 | 100.0% | 119 |
+
+> **Note on small models**: The `llama3.2:1b` surprisingly outperformed the larger Qwen models on the dynamic economy track due to its ability to better balance the agent's energy limits with pet care inside the Pi-style minimalist harness.
+
+---|---:|---:|---:|---:|
 | RandomSchema | TBD | TBD | — | — |
 | RandomValid | TBD | 100% | — | — |
 | RuleAgent | TBD | 100% | — | — |
