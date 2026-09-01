@@ -248,6 +248,18 @@ The key result becomes:
 
 | Model | Episodes | Survival | Avg Score | Avg Days | Avg Output Tokens |
 |---|---:|---:|---:|---:|---:|
+| `qwen3.5:4b` + Harness V1 | 5 | 80.0% | 6,501 | 5.75 | 4,525.0 |
+| `llama3.2:1b` + Harness V1 | 7 | 14.3% | 4,859 | 3.78 | 18,820.0 |
+| `lfm2.5-thinking:1.2b` + Harness V1 | 5 | 0.0% | 4,754 | 4.17 | 332,318.0 |
+| `qwen2.5-coder:7b` + Harness V1 | 6 | 0.0% | 4,052 | 3.57 | 387.0 |
+| `qwen3.8:latest` + Harness V1 | 5 | 0.0% | 2,814 | 2.37 | 881.0 |
+| `qwen2.5:3b` + Harness V1 | 6 | 0.0% | 1,503 | 1.17 | 107.0 |
+| `oamazonasgabriel/lfm2.5-2.6b:q4_k_m-8gbGPU` + Harness V1 | 3 | 0.0% | 997 | 0.93 | 71,376.0 |
+| `RuleAgent` + Harness V1 | 1 | 0.0% | 820 | 0.72 | 1,538.0 |
+
+> **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
+
+---|---:|---:|---:|---:|---:|
 
 > **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
 
