@@ -16,7 +16,8 @@ def init_db():
             agent_name TEXT,
             survived BOOLEAN,
             simulated_days REAL,
-            avg_health REAL
+            avg_health REAL,
+            score REAL
         )
     ''')
     conn.commit()
@@ -35,6 +36,7 @@ class ScoreSubmit(BaseModel):
     survived: bool
     simulated_days: float
     avg_health: float
+    score: float
 
 @app.post("/submit")
 def submit_score(score: ScoreSubmit):
@@ -42,9 +44,9 @@ def submit_score(score: ScoreSubmit):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO leaderboard (run_id, agent_name, survived, simulated_days, avg_health)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (score.run_id, score.agent_name, score.survived, score.simulated_days, score.avg_health))
+            INSERT INTO leaderboard (run_id, agent_name, survived, simulated_days, avg_health, score)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (score.run_id, score.agent_name, score.survived, score.simulated_days, score.avg_health, score.score))
         conn.commit()
         conn.close()
         return {"status": "success", "message": "Score submitted"}
@@ -56,9 +58,9 @@ def get_leaderboard(limit: int = 10):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        SELECT agent_name, survived, simulated_days, avg_health 
+        SELECT agent_name, survived, simulated_days, avg_health, score
         FROM leaderboard 
-        ORDER BY simulated_days DESC, avg_health DESC 
+        ORDER BY score DESC 
         LIMIT ?
     ''', (limit,))
     rows = c.fetchall()
@@ -70,6 +72,7 @@ def get_leaderboard(limit: int = 10):
             "agent_name": r[0],
             "survived": bool(r[1]),
             "simulated_days": r[2],
-            "avg_health": r[3]
+            "avg_health": r[3],
+            "score": r[4]
         })
     return {"leaderboard": result}
