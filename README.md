@@ -259,30 +259,6 @@ The key result becomes:
 
 > **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
 
----|---:|---:|---:|---:|---:|
-
-> **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
-
----|---:|---:|---:|---:|---:|
-
-> **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
-
----|---:|---:|---:|---:|---:|
-| `llama3.2:1b` + Harness V1 | SURVIVED | 8,023 | 7.08 | 92.9% | 19,645 |
-| `qwen2.5-coder:7b` + Harness V1 | DIED | 3,084 | 2.02 | 100.0% | 388 |
-| `qwen2.5:3b` + Harness V1 | DIED | 1,908 | 1.00 | 100.0% | 119 |
-
-> **Note on small models**: The `llama3.2:1b` surprisingly outperformed the larger Qwen models on the dynamic economy track due to its ability to better balance the agent's energy limits with pet care inside the Pi-style minimalist harness.
-
----|---:|---:|---:|---:|
-| RandomSchema | TBD | TBD | — | — |
-| RandomValid | TBD | 100% | — | — |
-| RuleAgent | TBD | 100% | — | — |
-| LFM2.5 2.6B Raw | TBD | TBD | TBD | TBD |
-| LFM2.5 + Harness V1 | TBD | TBD | TBD | TBD |
-
-Planned expansion: Average Health, Planning Failures, Resource Failures, Truncation Rate, Average Latency, Reasoning Tokens, Cost / Simulated Day.
-
 ---
 
 ## Current State (v1.1 runtime)
