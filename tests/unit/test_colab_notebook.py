@@ -39,6 +39,7 @@ def test_notebook_cpu_flow_offline(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "check_call", lambda args: 0)
     namespace = {}
     cells = _cells()
+    cells[0] = cells[0].replace('REF = "baf81456053e736031a0c46da9ae1e782d020500"', 'REF = ""')
     cells[1] = cells[1].replace('"/content/tamabench-output"', repr(str(tmp_path / "results")))
     cells[3] = cells[3].replace('"/content/tamabench-results"', repr(str(tmp_path / "archive")))
     for source in cells:
@@ -58,7 +59,25 @@ def test_notebook_rejects_source_zip_traversal(monkeypatch):
     monkeypatch.setitem(sys.modules, "google.colab", colab)
     monkeypatch.setattr(subprocess, "check_call", lambda args: pytest.fail("unsafe ZIP reached installation"))
     with pytest.raises(ValueError, match="Unsafe path"):
-        exec(compile(_cells()[0], "install", "exec"), {})
+        source = _cells()[0].replace('REF = "baf81456053e736031a0c46da9ae1e782d020500"', 'REF = ""')
+        exec(compile(source, "install", "exec"), {})
+
+
+def test_notebook_default_installs_published_commit_without_upload(monkeypatch):
+    calls = []
+    monkeypatch.setattr(subprocess, "check_call", calls.append)
+    exec(compile(_cells()[0], "install", "exec"), {})
+    assert len(calls) == 1
+    assert calls[0][-1] == "git+https://github.com/Cheva1234/TamaBench.git@baf81456053e736031a0c46da9ae1e782d020500"
+
+
+def test_notebook_local_checkout_takes_priority_over_default_ref(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='tamabench'\n")
+    calls = []
+    monkeypatch.setattr(subprocess, "check_call", calls.append)
+    source = _cells()[0].replace('LOCAL_CHECKOUT = ""', f'LOCAL_CHECKOUT = {str(tmp_path)!r}')
+    exec(compile(source, "install", "exec"), {})
+    assert len(calls) == 1 and calls[0][-1] == str(tmp_path)
 
 
 @pytest.mark.parametrize('provider,key_name', [('openai','OPENAI_API_KEY'), ('openrouter','OPENROUTER_API_KEY'), ('groq','GROQ_API_KEY')])

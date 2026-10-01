@@ -73,6 +73,6 @@ No retry silently changes parameters, endpoint, or model. Presets are convenienc
 
 ## Colab
 
-Open the [four-cell notebook](../notebooks/TamaBench_Colab.ipynb), install the supplied source ZIP, select a provider, enter your model ID, and add the matching Secret in Colab's Secrets panel with notebook access enabled. The configuration cell performs the same local preflight. The next cell runs the same `run_experiment` as the CLI; the final cell downloads results. CPU is the initial selection so simply opening/running an unconfigured notebook does not make hosted API calls.
+Open the [four-cell notebook](../notebooks/TamaBench_Colab.ipynb), run the default pinned-commit install cell, select a provider, enter your model ID, and add the matching Secret in Colab's Secrets panel with notebook access enabled. The configuration cell performs the same local preflight. The next cell runs the same `run_experiment` as the CLI; the final cell downloads results. CPU is the initial selection so simply opening/running an unconfigured notebook does not make hosted API calls.
 
 The notebook and provider paths have been executed with mocked Colab interfaces and mocked HTTP responses. A fresh live Colab session and real API run remain untested.

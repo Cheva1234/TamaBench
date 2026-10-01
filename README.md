@@ -1,155 +1,199 @@
 # TamaBench 2.0
 
-A small, reproducible autonomous-agent benchmark: keep a virtual pet healthy while managing work, money, inventory, and energy over seven simulated days.
+**How well can an AI agent care for a virtual pet over seven simulated days?** TamaBench evaluates decisions about health, work, money, inventory, and energy in a deterministic environment. Run a CPU baseline, connect a hosted model API, or use your own Ollama server.
 
-Version 2.0 separates simulation time from model latency. Its accelerated engine jumps between events and exact integer-state thresholds; the reference engine advances minute by minute. Both produce the same states, event histories, elapsed time, and minute-weighted welfare statistics. No artificial sleeps are added.
+[Open in Colab](https://colab.research.google.com/github/Cheva1234/TamaBench/blob/main/notebooks/TamaBench_Colab.ipynb) · [API provider guide](docs/providers.md) · [Environment rules](tamabench/spec/environment_v2.yaml) · [CI runs](https://github.com/Cheva1234/TamaBench/actions/workflows/ci.yml)
 
-## Quick start: CPU only
+- One implementation for Python, CLI, and the four-cell Colab notebook
+- Accelerated simulation with a minute-by-minute reference engine and equivalence tests
+- Measured results, explicit failure statuses, reproducible configuration, and replayable trajectories
+- OpenAI, OpenRouter, Groq, custom Chat Completions endpoints, and native Ollama
 
-Python 3.10 or newer. From this checkout:
+TamaBench measures performance in this environment. It does not establish a universal ranking of intelligence or autonomy, and V1 results are not comparable with the corrected V2 contract.
+
+## 1. Try a CPU baseline
+
+Requires Python 3.10+ and Git. Install from this repository; the commands do not assume a PyPI release exists.
 
 ```bash
-python -m pip install -e '.[dev]'
+git clone https://github.com/Cheva1234/TamaBench.git
+cd TamaBench
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+```
+
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` instead. Then run a short 240-minute smoke test:
+
+```bash
 python -m tamabench doctor
-python -m tamabench run --agent rule --output-dir results/rule
+python -m tamabench run --agent rule --episodes 2 --seed-start 42 \
+  --horizon-minutes 240 --output-dir results/rule
 python -m tamabench report --output-dir results/rule
 ```
 
-No GPU, model download, credentials, Ollama service, or network inference is needed for the default rule baseline. For a short smoke test add `--max-simulated-minutes 240`. `tamabench` and `python -m tamabench.cli` are equivalent entry points.
+This uses no model, credentials, GPU, or inference requests. Installation needs access to GitHub and the Python package registry. `tamabench` and `python -m tamabench` are equivalent commands. Inspect options with `python -m tamabench run --help`.
 
-The [four-cell Colab notebook](notebooks/TamaBench_Colab.ipynb) uses exactly the same configuration and experiment functions. See [Colab setup](docs/colab.md), including the default reviewed-source-ZIP upload and optional published-ref installation.
-
-## One configuration, three entry points
-
-CLI, Python, and Colab all use `RunConfig` and `run_experiment`:
-
-```python
-from tamabench.config import RunConfig
-from tamabench.experiment import run_experiment
-
-config = RunConfig(
-    agent="rule",
-    episodes=3,
-    seed_start=42,
-    max_simulated_minutes=7 * 1440,
-    output_dir="results/rule",
-    display="compact",
-)
-result = run_experiment(config)
-print(result.run_ids)
-```
-
-Save `config.model_dump_json(indent=2)` as a JSON file and pass `--config config.json`. Explicit CLI flags override the file. Invalid values, unknown configuration fields, unknown scenarios, non-finite numbers, and incompatible provider/lifecycle combinations fail before an episode starts.
-
-Defaults: `dynamic_v2`, seven days, accelerated execution, one seed starting at 42, CPU rule agent, compact display. `standard_v1` is an explicit compatibility spelling for current `dynamic_v2` rules; it does not emulate the historical simulator. Actual metadata always records scenario version 2 and behavioral contract 2.0.0.
-
-## Model backends
-
-### Ollama
-
-Install/run Ollama and obtain your model separately. TamaBench never silently downloads a model or installs a GPU stack.
+For a full seven-day baseline, choose a separate output directory:
 
 ```bash
-python -m tamabench doctor --agent raw_llm --backend ollama --model qwen2.5:3b
-python -m tamabench run \
-  --agent raw_llm --backend ollama --model qwen2.5:3b \
-  --api-base http://localhost:11434 \
-  --keep-alive 5m --output-dir results/ollama
+python -m tamabench run --agent rule --episodes 10 --seed-start 42 \
+  --horizon-minutes 10080 --output-dir results/rule-7d
 ```
 
-Ollama uses native `/api/generate` with an empty prompt for measured warmup, then `/api/chat` for decisions. Both send a finite `keep_alive` duration, default five minutes. Closing the HTTP client does not unload the server model; the TTL applies. `--model-lifecycle cold` explicitly unloads before each episode and records these cleanup requests separately in the manifest. This can affect other clients sharing that Ollama server. [Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md)
+A quick smoke run checks setup. Use a declared seed set, horizon, and matching budgets for scientific comparisons; ten seeds are an example, not a guarantee of statistical precision.
 
-### Hosted API providers (no GPU required)
+### Pin a verified implementation
 
-Presets support OpenAI, OpenRouter, and Groq Chat Completions APIs. Pick your own exact model ID and set the corresponding environment variable: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `GROQ_API_KEY`.
+For a fixed V2 implementation, install the published commit that passed Python 3.10/3.12 CI:
 
 ```bash
-read -rsp 'API key: ' OPENAI_API_KEY; export OPENAI_API_KEY; echo
-tamabench providers
-tamabench doctor --provider openai --model YOUR_MODEL_ID
-tamabench run --provider openai --model YOUR_MODEL_ID \
+python -m pip install "git+https://github.com/Cheva1234/TamaBench.git@baf81456053e736031a0c46da9ae1e782d020500"
+```
+
+Use a fresh environment when switching installations. [Verification for this commit](https://github.com/Cheva1234/TamaBench/actions/runs/36899531782) includes the full offline test suite, wheel build, and installed-wheel CPU smoke/replay. The manifest records the installed source and rule hashes; package version `2.0.0` alone is insufficient to identify an exact experiment.
+
+## 2. Test a hosted model API
+
+No local model download or GPU is needed. Choose a Chat Completions model available in your provider account.
+
+| `--provider` | Environment variable / Colab Secret | API base |
+|---|---|---|
+| `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
+| `groq` | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` |
+| `custom` | `TAMABENCH_API_KEY` by default | Explicit `--api-base` |
+
+For OpenAI, enter the key privately in Bash, then replace `YOUR_MODEL_ID` with your exact model ID:
+
+```bash
+read -rsp 'OpenAI API key: ' OPENAI_API_KEY; export OPENAI_API_KEY; echo
+python -m tamabench providers
+python -m tamabench doctor --provider openai --model YOUR_MODEL_ID
+python -m tamabench run --provider openai --model YOUR_MODEL_ID \
   --horizon-minutes 240 --max-api-calls 30 --max-output-tokens 512 \
   --max-total-tokens 30000 --max-wall-seconds 300 --max-retries 0 \
   --output-dir results/api-smoke
+python -m tamabench report --output-dir results/api-smoke
 ```
 
-Change the provider and credential variable to use OpenRouter or Groq. `--provider` selects the model agent, backend, endpoint, named credential variable, and compatible output-token field. API presets require an explicit model instead of guessing a billable choice. `doctor` checks local configuration and credential presence without requests; `run` may incur provider charges. Missing required keys fail before an experiment starts. This short run is a smoke test, not a full ranking.
+Change the provider and key-variable name for OpenRouter or Groq. The preset supplies the model agent, backend, endpoint, auth-variable name, and output-token parameter. Models are always an explicit choice. `doctor` sends zero requests and checks local settings; it does not test balance, connectivity, or model availability. `run` sends real requests and may incur charges.
 
-For other compatible endpoints, use `--provider custom --model YOUR_MODEL_ID --api-base https://your-provider.example/v1 --api-key-env TAMABENCH_API_KEY --require-api-key`. An unauthenticated local server can omit `--require-api-key`. The existing `--backend openai_compatible` interface remains supported. Credentials never belong in configuration files, CLI key-value arguments, or URLs. Named cloud endpoints are pinned; authenticated remote custom endpoints require HTTPS and redirects are disabled.
+Reasoning-heavy models may need a larger output allowance than 512 tokens to produce an action. Call, wall-time, and observed-token limits bound an experiment; they are not a guaranteed monetary cap. Set provider-side spending limits as appropriate.
 
-Cloud presets omit temperature, sampling seeds, reasoning options, and JSON mode unless explicitly chosen. This avoids sending unsupported model-specific options. These omissions are recorded and mean provider defaults apply. Generic services receive `/chat/completions` with no Ollama fields or artificial warmup. Native Responses, Anthropic Messages, and Gemini APIs are not implemented. API availability and model-option support were checked in documentation, not live-paid runs.
+For another Chat Completions service:
 
-See [provider setup, custom endpoints, troubleshooting, and comparison guidance](docs/providers.md). In Colab, select the provider from the form, enter the model ID, and add the matching Colab Secret. Hosted APIs do not require a Colab GPU.
+```bash
+python -m tamabench run --provider custom --model YOUR_MODEL_ID \
+  --api-base https://your-provider.example/v1 \
+  --api-key-env TAMABENCH_API_KEY --require-api-key \
+  --horizon-minutes 240 --max-api-calls 30 --max-wall-seconds 300 \
+  --output-dir results/custom
+```
 
-## Bounds and outcomes
+Replace the example URL; pass the API base, not a full `/chat/completions` URL. Omit `--require-api-key` for an unauthenticated server and use a credential variable that is unset. Authenticated remote endpoints require HTTPS; loopback HTTP is available for local development. Redirects are disabled. Never put keys in configuration files, endpoint URLs, command arguments, or notebooks.
 
-Use `--max-decisions`, `--max-api-calls`, `--max-total-tokens`, `--max-wall-seconds`, `--max-consecutive-failures`, and `--max-stalled-decisions` to bound runs. Provider timeout, output-token limit, retry count, temperature, inference seed, schema mode, and reasoning effort are configurable. Ollama and legacy backend-only configurations follow the episode seed by default. Cloud/custom presets omit sampling seeds unless `--inference-seed` or `--seed-mode episode` is supplied.
+Cloud presets omit temperature, sampling seeds, reasoning effort, and JSON mode by default. Provider defaults therefore apply and are recorded as such. Choose supported explicit options for controlled comparisons; see [provider compatibility, setup, retries, and errors](docs/providers.md). Native OpenAI Responses, Anthropic Messages, and Gemini APIs are not implemented.
 
-Input-token usage is known only after a provider response. Token budgets stop further calls after observed usage and clamp requested output tokens; they are not a guaranteed pre-call token or monetary spending cap. In-flight HTTP requests are bounded by timeouts. Provider-reported usage can be inaccurate. With a token budget enabled, missing usage is treated as an infrastructure failure rather than allowing unmetered calls.
+### Run a local Ollama model
 
-Episodes distinguish:
+Start Ollama and download your chosen model separately. Replace `YOUR_OLLAMA_MODEL` with its installed name:
 
-- `completed`: alive at the configured horizon
-- `died`: health reached zero
-- `invalid_action_abort` or `stalled`: repeated rejected/non-advancing decisions
-- `budget_exhausted`: configured budget reached
-- `interrupted` or `infrastructure_failed`: execution did not produce a finished scientific outcome
+```bash
+python -m tamabench doctor --provider ollama --model YOUR_OLLAMA_MODEL
+python -m tamabench run --provider ollama --model YOUR_OLLAMA_MODEL \
+  --horizon-minutes 240 --keep-alive 5m --output-dir results/ollama
+```
 
-A rejected action advances no time and does not become a fallback wait. Time-skips stop at death or the horizon. Work earns its start-time quote only after the full job duration completes alive, including jobs ending exactly at the horizon. `success` means accepted; `completed` means the requested action finished alive. `execution_minutes` is actual elapsed time.
+Ollama uses a measured empty-prompt warmup and native chat calls. A finite five-minute residency TTL is the default. `--model-lifecycle cold` unloads before each episode and records cleanup requests separately; it can affect other users of the same server. See [Ollama's API](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
-## Outputs, resume, replay
+## 3. Run in Colab
 
-One output directory contains:
+1. [Open the notebook](https://colab.research.google.com/github/Cheva1234/TamaBench/blob/main/notebooks/TamaBench_Colab.ipynb) and run the install cell. It installs the verified commit above by default
+2. Keep `cpu` for a first smoke run, or choose `openai`, `openrouter`, `groq`, `ollama`, or `custom` and enter a model ID. For hosted APIs, add the matching secret in Colab's Secrets panel and enable notebook access
+3. Run the execution cell, then the download cell to save the results ZIP
+
+The default is one 240-minute episode with small explicit budgets and no model-output retries. Hosted APIs need no Colab GPU. Optional Google Drive persistence and source-ZIP/local-checkout installation are documented in [Colab setup](docs/colab.md). The notebook calls the same package functions as the CLI; it contains no separate simulator.
+
+## Results, resume, and replay
+
+Each output directory contains:
 
 ```text
-manifest.json       configuration, source/spec hashes, seeds, dependencies, status
-results.sqlite      run metadata, decisions, timing, and outcomes
-events.jsonl        durable event stream
-traces/             per-run replay JSONL and human-readable traces
-summary.json        machine-readable measured episode metrics
+manifest.json       settings, source/spec hashes, seeds, versions, and status
+results.sqlite      authoritative runs, decisions, timings, and outcomes
+events.jsonl        recorded events
+traces/             optional per-run JSONL and human-readable traces
+summary.json        measured episode metrics
 summary.csv         one row per episode attempt
 summary.md          readable results
 ```
 
-`--no-trace-logs` disables the optional duplicate trace files; SQLite and events remain available. The legacy `--db-path` and `--event-path` flags override those two destinations; other outputs stay in `--output-dir` (or beside the requested database when no output directory is specified).
+Repeat the exact short CPU configuration with `--resume` to skip finished seed pairs, then export and replay a saved trajectory:
 
 ```bash
-python -m tamabench run --agent rule --episodes 10 --output-dir results/rule --resume
+python -m tamabench run --agent rule --episodes 2 --seed-start 42 \
+  --horizon-minutes 240 --output-dir results/rule --resume
 python -m tamabench export --output-dir results/rule
 python -m tamabench replay --output-dir results/rule --run-id RUN_ID_FROM_SUMMARY
-python -m tamabench report --output-dir results/rule --experiment-id EXP_ID_FROM_MANIFEST
 ```
 
-Resume skips exact configuration-and-seed pairs with finished statuses: `completed`, `died`, `invalid_action_abort`, `stalled`, or `budget_exhausted`. It retries `running`, `interrupted`, and `infrastructure_failed` attempts from the beginning. It does not selectively rerun scientific failures or continue mid-episode. Changing provider settings, budgets, the specification, or installed source creates a new fingerprint. Extending the seed range, changing display, or moving output paths does not change the behavioral fingerprint. Without `--resume`, another attempt is recorded.
+Replace `RUN_ID_FROM_SUMMARY` with a `run_id` in `results/rule/summary.json`. `report --experiment-id EXP_ID_FROM_MANIFEST` selects one configuration group. Reports keep different configurations separate; `report-v1` is a compatibility alias for the current report.
 
-Reports keep configurations separate and calculate values from recorded results. `report-v1` remains an alias for the current report command. V1 results are not directly comparable with the corrected V2 contract.
+Resume skips finished `completed`, `died`, `invalid_action_abort`, `stalled`, and `budget_exhausted` attempts. It retries interrupted/infrastructure attempts from the beginning. It does not discard scientific failures or continue mid-episode. Changing provider options, budgets, rules, or installed source creates a different fingerprint. Increasing the episode count or changing output/display settings does not. Without `--resume`, another attempt is recorded.
 
-## What is measured
+## Python and saved configuration
 
-- Survival and actual simulated duration
-- Health/happiness averages over every simulated minute, plus minimum health
-- Strict JSON/schema reliability, first-pass failures, retries, and truncation
-- Accepted actions, completed jobs, income, and spending
-- Model calls versus deterministic harness/policy decisions and overrides
-- Provider usage, model latency, warmup, wall time, and non-inference overhead
+```python
+from pathlib import Path
+from tamabench.config import RunConfig
+from tamabench.experiment import run_experiment
 
-Unimplemented causal/planning/prediction metrics remain null or unavailable; no placeholder benchmark scores are presented as measured facts. Harness results include deterministic policy assistance and must not be interpreted as pure model autonomy.
+config = RunConfig(
+    agent="rule", episodes=2, seed_start=42,
+    max_simulated_minutes=240, output_dir="results/python",
+)
+Path("config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
+result = run_experiment(config)
+print(result.run_ids)
+```
 
-The canonical action parser accepts one complete JSON object. It preserves sleep hours, rejects booleans as quantities, rejects negative/zero amounts and durations, rejects unknown fields/actions and duplicate keys, and does not repair truncated or prose-wrapped JSON. JSON, dictionaries, and typed proposals share one validation boundary.
+```bash
+python -m tamabench run --config config.json --resume
+```
 
-The [behavioral specification](tamabench/spec/environment_v2.yaml) documents exact rates, action ordering, automatic sleep transitions, dynamic prices/rewards, sickness events, and welfare sampling. `hunger` is the legacy field name for fullness: 100 is full and 0 is starving.
+Explicit CLI flags override saved values. Changing `--provider` also resets the previous provider's endpoint, key-variable name, model, and model-specific defaults; supply the new model explicitly. Configuration files contain key-variable names, never credentials. Unknown fields, incompatible settings, and invalid values fail before execution.
+
+Defaults are the `dynamic_v2` scenario, a seven-day horizon, accelerated mode, one seed starting at 42, and the CPU rule agent. `standard_v1` is an alias for current V2 rules, not a V1 emulator.
+
+## Benchmark contract and credibility
+
+The [versioned specification](tamabench/spec/environment_v2.yaml) defines rates, action ordering, prices, sickness events, rewards, and welfare sampling. `hunger` retains its historical field name but means fullness: 100 is full.
+
+- The reference engine advances minute by minute. The accelerated engine skips exact integer-state intervals; regression tests compare states, event histories, elapsed time, and welfare across 1,000 reachable randomized trajectories
+- Welfare uses every simulated minute, so more frequent decisions do not inflate average health or happiness
+- Strict JSON/schema validation preserves action quantities and rejects unknown fields, booleans as quantities, duplicate keys, and invalid values. Rejected/truncated outputs never execute
+- Time advances only for accepted actions and stops at death or the configured horizon. Work earns income only after the job completes alive
+- Scientific outcomes distinguish survival, death, repeated invalid/stalled actions, and budget exhaustion. Interruptions and infrastructure failures remain visible rather than becoming successes
+- Reports derive survival, duration, welfare, action/economy measures, schema reliability, retries, model/policy decisions, tokens, latency, and overhead from recorded evidence. Unsupported planning/causal metrics remain unavailable
+- Model-output retries are recorded and counted. HTTP/auth/rate-limit failures are not silently retried; missing/invalid provider usage does not become a free successful call
+- Replay verifies deterministic transitions and trajectory-derived outcomes; it does not reproduce the provider's model generation
+
+For a credible comparison, publish the exact source/model/configuration, seed set, horizon, budgets, schema mode, sampling controls, and whether a harness assisted the model. Report sample size and uncertainty, keep infrastructure attempts visible, and retain the trajectory artifacts. The report includes a Wilson 95% interval for survival; a small sample is still limited evidence. Harness results include policy assistance and must be labeled accordingly. The retained composite score is secondary, not a validated universal autonomy ranking.
 
 ## Development and verification
 
 ```bash
-python -m pytest
-python scripts/benchmark_overhead.py --help
+python -m pip install -e '.[dev,api]' build
+python -m pytest -q
+python -m build --wheel
+python scripts/benchmark_overhead.py --episodes 5 --delay-ms 25 --output performance.json
 ```
 
-The offline regression suite includes the seed-14 reference/accelerated health divergence, 1,000 reachable randomized trajectories, welfare segmentation invariance, an independent minute-end oracle, horizon and reward edges, strict parser parity, and mocked provider/logging failures. The overhead benchmark uses deterministic fake models and makes no real inference requests. Real GPU/provider performance is not claimed by these checks.
+[GitHub Actions](https://github.com/Cheva1234/TamaBench/actions/workflows/ci.yml) runs the offline suite on Python 3.10/3.12, builds a wheel, and tests installation outside the checkout. The published implementation has passed these checks. See the selected commit's run for its exact status.
+
+Provider integration and Colab interfaces are tested with mocks. No live hosted-model inference, GPU benchmark, fresh Colab session, or Drive authentication is claimed by the automated tests. The performance script injects synthetic response delays; its timings are not real-model speed claims. Provider aliases, defaults, routing, and stochastic inference can change, even when the simulator is deterministic.
+
+The optional local API stores unverified submitted results; it is not a trusted public leaderboard. Install its dependencies with `python -m pip install -e '.[api]'`.
 
 License: [MIT](LICENSE)
-
-The optional local submission prototype can be installed with `python -m pip install -e '.[api]'`. It stores unverified client-submitted results and is not a trusted public leaderboard. Development/CI API tests use in-process test clients, with no production database or network server.
-
-The GitHub Actions workflow runs the full offline suite on Python 3.10 and 3.12, builds a wheel, and smoke-tests the installed wheel outside the checkout. This workflow is provided for a future authorized push; creating the file does not mean hosted CI has run.
