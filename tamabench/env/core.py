@@ -1,15 +1,15 @@
-"""Headless Environment Simulator Core for TamaBench V1.
+"""Headless environment simulator for behavioral contract 2.0.0.
 
 Implements Time-Skip Actions (work, sleep, wait) backed by an Event-Driven Fast-Forward Engine.
 """
 
 from typing import Union, Optional, Tuple
-from tamabench.env.state import WorldState, AgentState, PetState, Inventory
+from tamabench.env.state import WorldState, AgentState, PetState, Inventory, SimulationStatistics
 from tamabench.env.dynamics import DynamicsEngine
 from tamabench.env.economy import EconomySystem
 from tamabench.env.scheduler import EventScheduler
 from tamabench.env.time_engine import TimeEngine, BenchmarkMode
-from tamabench.env.scenarios import get_config_for_scenario, get_difficulty_config
+from tamabench.env.scenarios import get_config_for_scenario
 from tamabench.schemas.observation import Observation
 from tamabench.schemas.actions import ActionProposal, StepResult
 from tamabench.validation.syntax_validator import SyntaxValidator
@@ -29,11 +29,19 @@ class TamaEnv:
     def reset(
         self,
         seed: int = 42,
-        scenario_id: str = "standard_v1",
-        scenario_version: int = 1,
+        scenario_id: str = "dynamic_v2",
+        scenario_version: int = 2,
+        max_simulated_minutes: Optional[int] = None,
     ) -> Observation:
         """Resets environment to reproducible initial state using `seed`."""
         config = get_config_for_scenario(scenario_id)
+        horizon = config.max_simulated_minutes if max_simulated_minutes is None else max_simulated_minutes
+        if type(horizon) is not int or horizon < 1:
+            raise ValueError("max_simulated_minutes must be a positive integer")
+        # Alias calls may still send the old scenario version; their observation
+        # must identify the actual rules, rather than claim historical V1 rules.
+        if type(scenario_version) is not int or scenario_version not in (1, 2):
+            raise ValueError("Unsupported scenario_version; dynamic_v2 uses version 2")
 
         self.state = WorldState(
             total_minutes=0,
@@ -51,15 +59,16 @@ class TamaEnv:
             inventory=Inventory(food=config.initial_food, medicine=config.initial_medicine),
             jobs_available=EconomySystem.get_dynamic_jobs(0),
             shop_items_available=EconomySystem.get_dynamic_shop(0),
-            benchmark_version="1.1.0",
-            environment_version="1.1.0",
-            scenario_id=scenario_id,
-            scenario_version=scenario_version,
+            benchmark_version="2.0.0",
+            environment_version="2.0.0",
+            scenario_id=config.id,
+            scenario_version=2,
+            max_simulated_minutes=horizon,
             seed=seed,
         )
         self.scheduler = EventScheduler(seed=seed)
         self.scheduler.seed_initial_events(
-            max_minutes=config.max_simulated_minutes,
+            max_minutes=horizon,
             sickness_events=config.sickness_events,
         )
         self.terminated = False
@@ -67,6 +76,18 @@ class TamaEnv:
         self.event_history = []
 
         return self.observe()
+
+    @property
+    def horizon_reached(self) -> bool:
+        return self.state.total_minutes >= self.state.max_simulated_minutes
+
+    @property
+    def max_simulated_minutes(self) -> int:
+        return self.state.max_simulated_minutes
+
+    @property
+    def statistics(self) -> SimulationStatistics:
+        return self.state.statistics
 
     def observe(self) -> Observation:
         """Returns current canonical observation snapshot."""
@@ -76,7 +97,7 @@ class TamaEnv:
 
     def requires_decision(self) -> bool:
         """Returns True if simulation is at a decision boundary requiring an API call."""
-        if self.terminated:
+        if self.terminated or self.horizon_reached:
             return False
         return not self.state.agent.current_activity.startswith("working:")
 
@@ -100,7 +121,9 @@ class TamaEnv:
 
     def advance_time(self, minutes: int) -> Tuple[bool, str]:
         """Advances simulation clock using analytical event-driven jumps."""
-        if minutes <= 0 or self.terminated:
+        if type(minutes) is not int or minutes < 0:
+            raise ValueError("minutes must be a nonnegative integer")
+        if minutes == 0 or self.terminated or self.horizon_reached:
             return self.terminated, self.termination_reason
 
         target_minute = self.state.total_minutes + minutes
@@ -108,9 +131,18 @@ class TamaEnv:
 
     def advance_until(self, target_minute: int) -> Tuple[bool, str]:
         """Advance to a target using the selected reference or accelerated engine."""
+        if type(target_minute) is not int or target_minute < 0:
+            raise ValueError("target_minute must be a nonnegative integer")
+        target_minute = min(target_minute, self.state.max_simulated_minutes)
         if self.mode == BenchmarkMode.LOGICAL:
-            return self._advance_reference_until(target_minute)
-        return self._advance_event_driven_until(target_minute)
+            result = self._advance_reference_until(target_minute)
+        else:
+            result = self._advance_event_driven_until(target_minute)
+        # Quotes are state, not an observation side effect. Direct time advances
+        # must also leave a current quote for the next accepted action.
+        self.state.jobs_available = EconomySystem.get_dynamic_jobs(self.state.total_minutes)
+        self.state.shop_items_available = EconomySystem.get_dynamic_shop(self.state.total_minutes)
+        return result
 
     def _advance_reference_until(self, target_minute: int) -> Tuple[bool, str]:
         """Reference implementation: apply dynamics and events one minute at a time."""
@@ -150,25 +182,21 @@ class TamaEnv:
 
     def step(self, action_input: Union[ActionProposal, dict, str]) -> StepResult:
         """Executes action proposal through 2-stage validation and time-skip commitment."""
-        if self.terminated:
+        if self.terminated or self.horizon_reached:
             return StepResult(
                 success=False,
                 observation=self.observe(),
-                terminated=True,
-                termination_reason=self.termination_reason,
+                terminated=self.terminated,
+                horizon_reached=self.horizon_reached,
+                termination_reason=self.termination_reason or "Simulation horizon reached.",
                 state_hash=self.state.compute_hash(),
             )
 
-        # Stage 1 Syntax & Schema Validation
-        if isinstance(action_input, ActionProposal):
-            proposal = action_input
-            schema_err = None
-        elif isinstance(action_input, dict):
-            proposal, schema_err = SyntaxValidator.validate_raw(
-                action_input.get("raw", "") if "raw" in action_input else str(action_input).replace("'", '"')
-            )
+        # All entry points share canonical validation, including typed models.
+        if isinstance(action_input, str):
+            proposal, schema_err = SyntaxValidator.validate_raw(action_input)
         else:
-            proposal, schema_err = SyntaxValidator.validate_raw(str(action_input))
+            proposal, schema_err = SyntaxValidator.validate_data(action_input)
 
         if schema_err:
             return StepResult(
@@ -195,6 +223,7 @@ class TamaEnv:
             )
 
         action = proposal.action
+        started_at = self.state.total_minutes
         exec_minutes = 1
 
         if action == "feed":
@@ -230,18 +259,12 @@ class TamaEnv:
             self.advance_time(exec_minutes)
 
         elif action == "sleep":
-            hours = proposal.hours
-            if hours not in (3, 5, 8):
-                if proposal.minutes and (proposal.minutes // 60 in (3, 5, 8)):
-                    hours = proposal.minutes // 60
-                else:
-                    hours = 3  # Default 3 hours if unassigned
-
+            hours = proposal.hours if proposal.hours is not None else 3
             exec_minutes = hours * 60
             self.state.agent.current_activity = "sleeping"
             self.state.pet.is_sleeping = True
             self.advance_time(exec_minutes)
-            if not self.terminated:
+            if not self.terminated and self.state.total_minutes - started_at == exec_minutes:
                 self.state.agent.current_activity = "idle"
                 self.state.pet.is_sleeping = False
 
@@ -259,14 +282,16 @@ class TamaEnv:
                 exec_minutes = job.duration_minutes
                 self.advance_until(self.state.total_minutes + exec_minutes)
 
-                # Deduct energy and grant reward money upon job completion
-                self.state.agent.energy = max(0, self.state.agent.energy - job.energy_cost)
-                self.state.agent.money += job.reward
+                # The quote is locked at action start. Interrupted jobs earn no
+                # reward or completion energy charge, including death on the last tick.
+                if not self.terminated and self.state.total_minutes - started_at == exec_minutes:
+                    self.state.agent.energy = max(0, self.state.agent.energy - job.energy_cost)
+                    self.state.agent.money += job.reward
                 self.state.agent.current_activity = "idle"
 
         elif action == "buy":
             item = EconomySystem.find_shop_item(proposal.item or "", self.state)
-            amount = proposal.amount or 1
+            amount = proposal.amount
             if item:
                 self.state.agent.money -= item.cost * amount
                 if item.item == "food":
@@ -278,7 +303,7 @@ class TamaEnv:
 
         elif action == "wait":
             # Time-Skip Action: Fast-forwards requested wait duration
-            exec_minutes = proposal.minutes or 30
+            exec_minutes = proposal.minutes
             self.advance_until(self.state.total_minutes + exec_minutes)
 
         elif action == "observe":
@@ -287,9 +312,11 @@ class TamaEnv:
 
         return StepResult(
             success=True,
+            completed=not self.terminated and self.state.total_minutes - started_at == exec_minutes,
+            horizon_reached=self.horizon_reached,
             observation=self.observe(),
             terminated=self.terminated,
             termination_reason=self.termination_reason,
-            execution_minutes=exec_minutes,
+            execution_minutes=self.state.total_minutes - started_at,
             state_hash=self.state.compute_hash(),
         )

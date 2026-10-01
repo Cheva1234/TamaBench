@@ -34,5 +34,5 @@ def test_live_reporter_uses_observed_economy_values():
     buy_result = env.commit(buy_proposal)
     reporter.update(buy_observation, 2, buy_proposal, buy_result)
 
-    assert reporter.total_income == 25
-    assert reporter.total_spending == 30
+    assert reporter.total_income == work_observation.jobs_available[0].reward
+    assert reporter.total_spending == buy_observation.shop_items_available[0].cost

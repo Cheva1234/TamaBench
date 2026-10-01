@@ -1,3 +1,3 @@
-"""TamaBench V1: Persistent Sandbox Agent Benchmark for Small AI Models."""
+"""TamaBench 2.0: Persistent Sandbox Agent Benchmark for Small AI Models."""
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"

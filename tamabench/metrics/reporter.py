@@ -6,12 +6,16 @@ from rich.table import Table
 from tamabench.metrics.calculator import EpisodeMetrics
 
 
+def _percent(value):
+    return "N/A" if value is None else f"{value:.1f}%"
+
+
 class BenchmarkReporter:
     def __init__(self):
         self.console = Console()
 
     def print_summary(self, metrics: EpisodeMetrics, model_name: str = "RuleAgent", episodes: int = 1):
-        self.console.print("\n[bold cyan]TamaBench V1 Benchmark Report[/bold cyan]\n")
+        self.console.print("\n[bold cyan]TamaBench V2 Benchmark Report[/bold cyan]\n")
 
         # Overview Panel
         self.console.print(
@@ -19,7 +23,7 @@ class BenchmarkReporter:
                 f"[bold white]Model:[/bold white] [green]{model_name}[/green]\n"
                 f"[bold white]Episodes:[/bold white] {episodes}\n"
                 f"[bold white]Simulated Days:[/bold white] {metrics.simulated_days} days\n"
-                f"[bold white]Survival Status:[/bold white] [{'green' if metrics.survived else 'red'}]{'SURVIVED' if metrics.survived else 'DIED'}[/{'green' if metrics.survived else 'red'}]",
+                f"[bold white]Survival Status:[/bold white] [{'green' if metrics.survived else 'red'}]{metrics.status.upper()}[/{'green' if metrics.survived else 'red'}]",
                 title="Experiment Overview",
                 border_style="cyan",
             )
@@ -34,7 +38,6 @@ class BenchmarkReporter:
         table_pet.add_row("Average Pet Health", f"{metrics.avg_health:.1f}")
         table_pet.add_row("Minimum Pet Health", f"{metrics.min_health:.1f}")
         table_pet.add_row("Average Happiness", f"{metrics.avg_happiness:.1f}")
-        table_pet.add_row("Critical Decision Accuracy", f"{metrics.critical_decision_acc:.1f}%")
         self.console.print(table_pet)
 
         # Schema & Decision Quality Table
@@ -42,16 +45,13 @@ class BenchmarkReporter:
         table_schema.add_column("Metric", style="bold white")
         table_schema.add_column("Value", style="green", justify="right")
 
-        table_schema.add_row("First-Pass Schema Accuracy", f"{metrics.first_pass_schema_acc:.1f}%")
-        table_schema.add_row("Final Schema Accuracy", f"{metrics.final_schema_acc:.1f}%")
-        table_schema.add_row("Schema Recovery Rate", f"{metrics.final_schema_recovery_rate:.1f}%")
-        table_schema.add_row("Output Truncation Rate", f"{metrics.truncation_rate:.1f}%")
-        table_schema.add_row("Retry Rate", f"{metrics.retry_rate:.1f}%")
-        table_schema.add_row("Valid Action Rate", f"{metrics.valid_action_rate:.1f}%")
-        table_schema.add_row("Invalid Action Rate", f"{metrics.invalid_action_rate:.1f}%")
-        table_schema.add_row("Productive Action Rate", f"{metrics.productive_action_rate:.1f}%")
-        table_schema.add_row("Wasteful Action Rate", f"{metrics.wasteful_action_rate:.1f}%")
-        table_schema.add_row("Prediction Accuracy", f"{metrics.prediction_accuracy:.1f}%")
+        table_schema.add_row("First-Pass Schema Accuracy", _percent(metrics.first_pass_schema_acc))
+        table_schema.add_row("Final Schema Accuracy", _percent(metrics.final_schema_acc))
+        table_schema.add_row("Schema Recovery Rate", _percent(metrics.final_schema_recovery_rate))
+        table_schema.add_row("Output Truncation Rate", _percent(metrics.truncation_rate))
+        table_schema.add_row("Retry Rate", _percent(metrics.retry_rate))
+        table_schema.add_row("Valid Action Rate", _percent(metrics.valid_action_rate))
+        table_schema.add_row("Invalid Action Rate", _percent(metrics.invalid_action_rate))
         self.console.print(table_schema)
 
         # Compute & Work Table
@@ -63,8 +63,8 @@ class BenchmarkReporter:
         table_compute.add_row("Total Spending", f"${metrics.total_spending}")
         table_compute.add_row("Jobs Completed", f"{metrics.jobs_completed}")
         table_compute.add_row("Average Context / Decision", f"{metrics.avg_context_tokens} tokens")
-        table_compute.add_row("Total Input Tokens", f"{metrics.total_input_tokens:,}")
-        table_compute.add_row("Total Output Tokens", f"{metrics.total_output_tokens:,}")
+        table_compute.add_row("Total Input Tokens", f"{metrics.total_input_tokens:,}" if metrics.token_usage_complete else "Unavailable")
+        table_compute.add_row("Total Output Tokens", f"{metrics.total_output_tokens:,}" if metrics.token_usage_complete else "Unavailable")
         table_compute.add_row("Reasoning Tokens / Decision", f"{metrics.reasoning_tokens_per_decision:.1f}")
         table_compute.add_row("JSON Tokens / Decision", f"{metrics.json_tokens_per_decision:.1f}")
         table_compute.add_row("API Calls / Simulated Day", f"{metrics.api_calls_per_simulated_day:.1f}")
@@ -76,4 +76,8 @@ class BenchmarkReporter:
         table_compute.add_row("Profiler: Logging", f"{metrics.logging_ms:.1f}ms")
         table_compute.add_row("Profiler: Other", f"{metrics.other_ms:.1f}ms")
         table_compute.add_row("Profiler: Episode Wall", f"{metrics.episode_wall_time_ms:.1f}ms")
+        table_compute.add_row("Warmup Requests", str(metrics.warmup_api_calls))
+        table_compute.add_row("Total Requests", str(metrics.api_calls))
+        table_compute.add_row("Measured non-inference overhead", f"{metrics.overhead_ms:.1f}ms")
+        table_compute.add_row("Inference share of wall time", f"{metrics.inference_fraction * 100:.1f}%")
         self.console.print(table_compute)

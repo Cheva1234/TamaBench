@@ -1,4 +1,4 @@
-"""Raw LLM agent adapter for small models in TamaBench V1.1."""
+"""Raw LLM agent adapter with strict, auditable response validation."""
 
 import json
 import time
@@ -7,7 +7,7 @@ from typing import Any, Optional, Tuple
 from tamabench.agents.base import BaseAgent
 from tamabench.context.builder import ContextBuilder
 from tamabench.env.time_engine import ComputeClock
-from tamabench.runtime.model_runtime import ModelRuntime
+from tamabench.runtime.model_runtime import ModelRuntime, ProviderError, InferenceBudgetExceeded
 from tamabench.schemas.actions import ActionProposal
 from tamabench.schemas.errors import BenchmarkError, ErrorCategory, ErrorType
 from tamabench.schemas.observation import Observation
@@ -47,13 +47,16 @@ class RawLLMAgent(BaseAgent):
         api_base: str = "http://localhost:11434/v1",
         api_key: str = "ollama",
         schema_mode: str = "raw_json",
-        temperature: float = 0.2,
+        temperature: float | None = 0.2,
         max_retries: int = 2,
         max_output_tokens: int = 4096,
         timeout: float = 120.0,
         runtime: Optional[ModelRuntime] = None,
-        keep_alive: str | int = -1,
+        keep_alive: str | int = "5m",
+        backend: str = "ollama",
+        inference_seed: int | None = None,
         reasoning_effort: Optional[str] = None,
+        output_token_parameter: str = "max_tokens",
     ):
         super().__init__(name=f"RawLLM({model_name})")
         if max_output_tokens <= 0:
@@ -63,6 +66,7 @@ class RawLLMAgent(BaseAgent):
                 "reasoning_effort must be one of: none, low, medium, high, or None"
             )
 
+        self.inference_seed = inference_seed
         self.model_name = model_name
         self.schema_mode = schema_mode
         self.temperature = temperature
@@ -81,6 +85,8 @@ class RawLLMAgent(BaseAgent):
             api_key=api_key,
             keep_alive=keep_alive,
             timeout=timeout,
+            backend=backend,
+            output_token_parameter=output_token_parameter,
         )
 
     @property
@@ -102,6 +108,10 @@ class RawLLMAgent(BaseAgent):
     def close(self) -> None:
         self.runtime.close()
 
+    def reset_episode(self):
+        self.recent_events.clear()
+        self.reset_decision_metadata()
+
     def record_event(self, event_description: str):
         self.recent_events.append(event_description)
 
@@ -118,6 +128,8 @@ class RawLLMAgent(BaseAgent):
         self, observation: Observation
     ) -> Tuple[str, Optional[ActionProposal], Optional[BenchmarkError]]:
         self.reset_decision_metadata()
+        self.last_decision.schema_observed = False
+        self.last_decision.action_source = "model"
         self.last_compute.reset()
         self.last_reasoning = ""
         self.last_json_output = ""
@@ -142,14 +154,19 @@ class RawLLMAgent(BaseAgent):
                 },
                 {"role": "user", "content": prompt},
             ],
-            "temperature": self.temperature,
             "max_tokens": self.max_output_tokens,
         }
+
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
+
+        if self.inference_seed is not None:
+            payload["seed"] = self.inference_seed
 
         if self.reasoning_effort is not None:
             payload["reasoning_effort"] = self.reasoning_effort
 
-        if self.schema_mode == "provider_constrained":
+        if self.schema_mode in {"provider_constrained", "json_mode"}:
             payload["response_format"] = {"type": "json_object"}
 
         started = time.perf_counter()
@@ -162,8 +179,12 @@ class RawLLMAgent(BaseAgent):
 
         for attempt in range(1, self.max_retries + 2):
             final_proposal = None
+            call_count_before = getattr(self.runtime, "api_calls", 0)
+            attempt_started = time.perf_counter()
             try:
                 response = self.runtime.generate(payload)
+                self.last_decision.usage_available = self.last_decision.usage_available and response.usage_available
+                self.last_decision.schema_observed = True
                 raw_output = response.content
                 final_finish_reason = response.finish_reason
                 self.last_compute.generation_ms += response.generation_ms
@@ -198,14 +219,26 @@ class RawLLMAgent(BaseAgent):
                         error_type=ErrorType.INVALID_JSON,
                         message="Model returned no parseable JSON decision.",
                     )
+                self.last_decision.attempts.append({"attempt": attempt, "raw_output": raw_output,
+                    "finish_reason": response.finish_reason, "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens, "generation_ms": response.generation_ms,
+                    "usage_available": response.usage_available,
+                    "response_model": response.response_model, "response_id": response.response_id,
+                    "system_fingerprint": response.system_fingerprint,
+                    "schema_valid": final_proposal is not None and last_error is None,
+                    "error_type": last_error.error_type.value if last_error else None})
             except Exception as exc:
-                raw_output = f"API Error: {exc}"
-                last_error = BenchmarkError(
-                    category=ErrorCategory.SCHEMA,
-                    error_type=ErrorType.INVALID_JSON,
-                    message=f"LLM API call failed: {exc}",
-                )
-                final_finish_reason = None
+                budget = isinstance(exc, InferenceBudgetExceeded)
+                last_error = BenchmarkError(category=ErrorCategory.INFRASTRUCTURE,
+                    error_type=ErrorType.BUDGET_EXHAUSTED if budget else ErrorType.PROVIDER_FAILURE,
+                    message=str(exc) if isinstance(exc, (ProviderError, InferenceBudgetExceeded)) else f"Provider response processing failed ({type(exc).__name__})")
+                if getattr(self.runtime, "api_calls", 0) > call_count_before:
+                    self.last_decision.attempts.append({"attempt": attempt, "raw_output": None,
+                        "generation_ms": (time.perf_counter()-attempt_started)*1000,
+                        "schema_valid": None, "error_type": last_error.error_type.value})
+                if first_failure is None:
+                    first_failure = last_error
+                break
 
             candidate_valid = final_proposal is not None and last_error is None
             if attempt == 1:
@@ -243,7 +276,7 @@ class RawLLMAgent(BaseAgent):
         self.last_finish_reason = final_finish_reason
         self.last_was_truncated = self.last_decision.was_truncated
         self.last_decision.generation_attempt = attempt
-        self.last_decision.attempt_count = attempt
+        self.last_decision.attempt_count = len(self.last_decision.attempts)
         self.last_decision.first_pass_valid = first_pass_valid
         self.last_decision.final_valid = final_proposal is not None and last_error is None
         self.last_decision.recovered = self.last_decision.final_valid and not first_pass_valid

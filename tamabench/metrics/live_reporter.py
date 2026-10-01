@@ -88,7 +88,7 @@ class LiveReporter:
             self.decision_history.pop(0)
 
         # Update Economy
-        if proposal and proposal.action == "work" and step_result.success:
+        if proposal and proposal.action == "work" and step_result.completed:
             j_id = proposal.job_id or ""
             job = next((job for job in observation.jobs_available if job.id == j_id), None)
             if job:
@@ -120,7 +120,7 @@ class LiveReporter:
         day_str = f"Day {obs.time.day} {obs.time.hour:02d}:{obs.time.minute:02d}" if obs else "Initializing"
         layout["header"].update(
             Panel(
-                f"[bold white]TamaBench V1 Live Monitor[/bold white] | Model: [cyan]{self.model_name}[/cyan] | Seed: #{self.seed} | Sim Time: [yellow]{day_str}[/yellow]",
+                f"[bold white]TamaBench V2 Live Monitor[/bold white] | Model: [cyan]{self.model_name}[/cyan] | Seed: #{self.seed} | Sim Time: [yellow]{day_str}[/yellow]",
                 style="bold cyan on black",
             )
         )

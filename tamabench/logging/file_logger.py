@@ -13,6 +13,7 @@ from tamabench.schemas.actions import ActionProposal, StepResult
 
 class FileLogger:
     def __init__(self, run_id: str, log_dir: str = "logs"):
+        self._handles = {}
         self.run_id = run_id
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
@@ -38,6 +39,22 @@ class FileLogger:
         # Clear latest replay JSONL file
         with open(self.latest_replay_path, "w", encoding="utf-8") as f:
             f.write("")
+
+    def _append(self, path, text):
+        if path not in self._handles:
+            self._handles[path] = open(path, "a", encoding="utf-8", buffering=65536)
+        self._handles[path].write(text)
+
+    def close(self):
+        errors = []
+        for handle in self._handles.values():
+            try:
+                handle.close()
+            except OSError as exc:
+                errors.append(exc)
+        self._handles.clear()
+        if errors:
+            raise errors[0]
 
     def log_step(
         self,
@@ -100,10 +117,8 @@ class FileLogger:
             f"  {raw_output.strip()}\n\n"
         )
 
-        with open(self.reasoning_path, "a", encoding="utf-8") as f:
-            f.write(block)
-        with open(self.latest_reasoning_path, "a", encoding="utf-8") as f:
-            f.write(block)
+        self._append(self.reasoning_path, block)
+        self._append(self.latest_reasoning_path, block)
 
         # Log standalone replay event JSONL line
         replay_record = {
@@ -123,13 +138,11 @@ class FileLogger:
         }
 
         line = json.dumps(replay_record) + "\n"
-        with open(self.replay_path, "a", encoding="utf-8") as f:
-            f.write(line)
-        with open(self.latest_replay_path, "a", encoding="utf-8") as f:
-            f.write(line)
+        self._append(self.replay_path, line)
+        self._append(self.latest_replay_path, line)
 
-    def log_summary(self, survived: bool, simulated_days: float, final_health: float, final_money: int):
-        status_str = "PASSED (SURVIVED)" if survived else "FAILED (PET DIED)"
+    def log_summary(self, survived: bool, simulated_days: float, final_health: float, final_money: int, status: str | None = None):
+        status_str = status or ("completed" if survived else "unsuccessful")
         summary_text = (
             "================================================================================\n"
             "BENCHMARK EPISODE SUMMARY\n"
@@ -139,7 +152,5 @@ class FileLogger:
             f"• Final Money    : ${final_money}\n"
             "================================================================================\n"
         )
-        with open(self.reasoning_path, "a", encoding="utf-8") as f:
-            f.write(summary_text)
-        with open(self.latest_reasoning_path, "a", encoding="utf-8") as f:
-            f.write(summary_text)
+        self._append(self.reasoning_path, summary_text)
+        self._append(self.latest_reasoning_path, summary_text)

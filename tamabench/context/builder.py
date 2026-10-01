@@ -41,8 +41,7 @@ class ContextBuilder:
             '"job_id":"...", "item":"food|medicine", "amount":1,'
             '"minutes":30, "hours":3|5|8, "prediction":{...}, "trace":{...}}'
         )
-        if schema_mode != "raw_json":
-            schema = "one provider-constrained JSON object using the TamaBench V1 schema"
+        # JSON mode still needs the same explicit action schema; it is not schema enforcement.
 
         return f"""GOAL:
 Keep the pet alive for {day_label} while managing money, energy, and supplies.
@@ -64,14 +63,11 @@ Never put the full observation inside prediction, and never make trace a string.
 
 WORLD RULES:
 Hunger is a fullness meter, not a starvation score: 0 means starving and 100 means fully fed.
-Feeding increases hunger by 35 and consumes one food; do not feed when fullness is
-already high (70 or more) because food is limited. Hunger decreases by 18 per simulated hour
+Feeding increases hunger by 35 and consumes one food; fullness is
+capped at 100. Hunger decreases by 18 per simulated hour
 and is capped at 0. While hunger is below 15, health decreases continuously by
-0.2 per simulated minute (12 per hour), not just once. Before any time-based
-action, estimate hunger at completion: a 3-hour sleep removes about 54 hunger, so
-sleeping at hunger 50 or lower reaches the danger zone. Sleeping only recovers
-health when hunger is 50 or higher. If a time-based action can push hunger below
-15, feed first when fullness is low or choose a shorter action.
+0.2 per simulated minute (12 per hour), not just once. Sleeping only recovers
+health when hunger is 50 or higher.
 Cleanliness falls continuously; cleanliness < 20 damages health and increases
 sickness risk. Sickness damages health. Agent energy limits care/work actions.
 Health reaching 0 ends the episode.

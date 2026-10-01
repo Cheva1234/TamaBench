@@ -39,6 +39,7 @@ def test_feed_action_precondition_and_effects():
     env.reset(seed=42)
 
     # Valid feed
+    env.state.pet.hunger = 60.0
     initial_food = env.state.inventory.food
     initial_hunger = env.state.pet.hunger
     result = env.step(ActionProposal(action="feed"))
@@ -60,7 +61,7 @@ def test_fullness_meter_uses_100_as_full_and_low_fullness_causes_damage():
     env = TamaEnv()
     env.reset(seed=42)
 
-    assert env.state.pet.hunger == 80.0
+    assert env.state.pet.hunger == 100.0
     env.state.pet.hunger = 100.0
     env.advance_time(60)
 
@@ -80,13 +81,13 @@ def test_work_and_buy_economy():
     env.reset(seed=42)
     initial_money = env.state.agent.money
 
-    # Perform cafe shift (+25)
+    # Initial dynamic_v2 cafe quote is $60
     res_work = env.step(ActionProposal(action="work", job_id="cafe_shift"))
     assert res_work.success is True
-    assert env.state.agent.money == initial_money + 25
+    assert env.state.agent.money == initial_money + 60
 
-    # Buy 1 food item (cost 30)
+    # Shop quote is refreshed after work; minute 60 food costs $11
     res_buy = env.step(ActionProposal(action="buy", item="food", amount=1))
     assert res_buy.success is True
-    assert env.state.agent.money == initial_money + 25 - 30
-    assert env.state.inventory.food == 2
+    assert env.state.agent.money == initial_money + 60 - 11
+    assert env.state.inventory.food == 4

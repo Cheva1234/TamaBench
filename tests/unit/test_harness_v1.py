@@ -40,7 +40,7 @@ def test_wake_scheduler_critical_flags():
 def test_wake_scheduler_next_wake_math():
     env = TamaEnv()
     obs = env.reset(seed=42)
-    scheduler = WakeScheduler()
+    scheduler = WakeScheduler(max_wait_horizon=240)
 
     # Feeding raises fullness to 100; next wake when it decays to 50.
     # 50 / 0.30 per minute = ~167 minutes. Give the agent food so the

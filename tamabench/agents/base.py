@@ -1,7 +1,7 @@
 """Base Agent Interface for TamaBench V1."""
 
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Tuple, Optional
 from tamabench.schemas.observation import Observation
 from tamabench.schemas.actions import ActionProposal
@@ -26,6 +26,12 @@ class DecisionMetadata:
     reasoning_tokens: int = 0
     json_tokens: int = 0
     raw_json: str = ""
+    usage_available: bool = True
+    schema_observed: bool = True
+    attempts: list[dict[str, Any]] = field(default_factory=list)
+    action_source: str | None = None
+    original_action_json: str | None = None
+    override_reason: str | None = None
 
     @property
     def total_tokens(self) -> int:

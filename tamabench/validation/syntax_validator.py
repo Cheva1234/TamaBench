@@ -1,167 +1,81 @@
-"""Stage 1: Syntax and Schema Validator for TamaBench V1.
+"""One strict validation boundary for JSON, dictionaries, and typed actions.
 
-Parses raw LLM string generation into structured ActionProposal
-and returns Schema Errors (INVALID_JSON, WRONG_TYPE, MISSING_ARGUMENT, etc.).
+Only complete JSON objects are accepted. No prose extraction, case folding,
+markdown stripping, truncation repair, non-finite numbers, or duplicate keys.
 """
 
 import json
-from typing import Any, Tuple, Optional
+from typing import Any, Optional, Tuple
 from pydantic import ValidationError
-from tamabench.schemas.actions import ActionProposal, ActionType, DecisionTrace, ActionPrediction
+from tamabench.schemas.actions import ActionProposal, ActionType
 from tamabench.schemas.errors import BenchmarkError, ErrorCategory, ErrorType
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"Non-finite JSON number: {value}")
+
+
 class SyntaxValidator:
-    VALID_ACTIONS = {a.value for a in ActionType}
+    VALID_ACTIONS = {action.value for action in ActionType}
+
+    @staticmethod
+    def _error(kind: ErrorType, message: str) -> BenchmarkError:
+        return BenchmarkError(category=ErrorCategory.SCHEMA, error_type=kind, message=message)
 
     @classmethod
     def validate_raw(cls, raw_output: str) -> Tuple[Optional[ActionProposal], Optional[BenchmarkError]]:
-        """Parses raw text into JSON and validates strict structural schema."""
-        cleaned = raw_output.strip()
-
-        # Handle markdown codeblock wrapping if present
-        if "```json" in cleaned:
-            parts = cleaned.split("```json")
-            if len(parts) > 1:
-                cleaned = parts[1].split("```")[0]
-        elif "```" in cleaned:
-            parts = cleaned.split("```")
-            if len(parts) > 1:
-                cleaned = parts[1]
-
-        cleaned = cleaned.strip()
-        
-        # Extract JSON object substring if surrounded by prose or handle truncation
-        start_idx = cleaned.find("{")
-        end_idx = cleaned.rfind("}")
-        if start_idx != -1:
-            if end_idx > start_idx:
-                cleaned = cleaned[start_idx : end_idx + 1]
-            else:
-                cleaned = cleaned[start_idx:]
-                if cleaned.count('"') % 2 != 0:
-                    cleaned += '"'
-                open_braces = cleaned.count("{") - cleaned.count("}")
-                if open_braces > 0:
-                    cleaned += "}" * open_braces
-
-        # 1. Parse JSON
+        if not isinstance(raw_output, str):
+            return None, cls._error(ErrorType.WRONG_TYPE, "Raw output must be a JSON string")
         try:
-            data = json.loads(cleaned)
-        except Exception as e:
-            return None, BenchmarkError(
-                category=ErrorCategory.SCHEMA,
-                error_type=ErrorType.INVALID_JSON,
-                message=f"Failed to parse output as valid JSON: {str(e)}",
-                details={"raw_output": raw_output},
-            )
+            data = json.loads(raw_output, object_pairs_hook=_unique_object,
+                              parse_constant=_reject_constant)
+        except (ValueError, TypeError, RecursionError) as error:
+            return None, cls._error(ErrorType.INVALID_JSON, f"Invalid JSON: {error}")
+        return cls.validate_data(data)
 
+    @classmethod
+    def validate_data(cls, data: Any) -> Tuple[Optional[ActionProposal], Optional[BenchmarkError]]:
+        # Revalidate even model_construct/model_copy results and mutable models.
+        # A typed proposal must never be a shortcut around schema enforcement.
+        if isinstance(data, ActionProposal):
+            data = {**data.__dict__, **(data.__pydantic_extra__ or {})}
         if not isinstance(data, dict):
-            return None, BenchmarkError(
-                category=ErrorCategory.SCHEMA,
-                error_type=ErrorType.INVALID_SCHEMA,
-                message="Output JSON must be a dictionary object",
-                details={"parsed_type": type(data).__name__},
-            )
-
-        # 2. Check Action Field
+            return None, cls._error(ErrorType.INVALID_SCHEMA, "Action must be a JSON object")
         if "action" not in data:
-            return None, BenchmarkError(
-                category=ErrorCategory.SCHEMA,
-                error_type=ErrorType.MISSING_ARGUMENT,
-                message="Missing required field 'action'",
-            )
-
-        action_name = str(data.get("action", "")).lower()
-        if action_name not in cls.VALID_ACTIONS:
-            return None, BenchmarkError(
-                category=ErrorCategory.SCHEMA,
-                error_type=ErrorType.UNKNOWN_ACTION,
-                message=f"Unknown action '{action_name}'. Valid actions are: {sorted(list(cls.VALID_ACTIONS))}",
-                details={"provided_action": action_name},
-            )
-
-        # 3. Action-specific parameter type and presence validation
-        if action_name == "work":
-            if "job_id" not in data or not data["job_id"]:
-                return None, BenchmarkError(
-                    category=ErrorCategory.SCHEMA,
-                    error_type=ErrorType.MISSING_ARGUMENT,
-                    message="Action 'work' requires string argument 'job_id'",
-                )
-            if not isinstance(data["job_id"], str):
-                return None, BenchmarkError(
-                    category=ErrorCategory.SCHEMA,
-                    error_type=ErrorType.WRONG_TYPE,
-                    message="Argument 'job_id' must be a string",
-                )
-
-        elif action_name == "buy":
-            if "item" not in data or not data["item"]:
-                return None, BenchmarkError(
-                    category=ErrorCategory.SCHEMA,
-                    error_type=ErrorType.MISSING_ARGUMENT,
-                    message="Action 'buy' requires string argument 'item'",
-                )
-            if not isinstance(data["item"], str):
-                return None, BenchmarkError(
-                    category=ErrorCategory.SCHEMA,
-                    error_type=ErrorType.WRONG_TYPE,
-                    message="Argument 'item' must be a string",
-                )
-            if "amount" in data:
-                if not isinstance(data["amount"], int):
-                    return None, BenchmarkError(
-                        category=ErrorCategory.SCHEMA,
-                        error_type=ErrorType.WRONG_TYPE,
-                        message="Argument 'amount' must be an integer",
-                    )
-                if data["amount"] <= 0:
-                    return None, BenchmarkError(
-                        category=ErrorCategory.SCHEMA,
-                        error_type=ErrorType.OUT_OF_RANGE,
-                        message="Argument 'amount' must be greater than 0",
-                    )
-
-        elif action_name == "wait":
-            if "minutes" in data:
-                if not isinstance(data["minutes"], int):
-                    return None, BenchmarkError(
-                        category=ErrorCategory.SCHEMA,
-                        error_type=ErrorType.WRONG_TYPE,
-                        message="Argument 'minutes' must be an integer",
-                    )
-                if data["minutes"] <= 0:
-                    return None, BenchmarkError(
-                        category=ErrorCategory.SCHEMA,
-                        error_type=ErrorType.OUT_OF_RANGE,
-                        message="Argument 'minutes' must be greater than 0",
-                    )
-
-        # 4. Construct ActionProposal
+            return None, cls._error(ErrorType.MISSING_ARGUMENT, "Missing required field 'action'")
+        action = data["action"]
+        if not isinstance(action, str):
+            return None, cls._error(ErrorType.WRONG_TYPE, "Argument 'action' must be a string")
+        if action not in cls.VALID_ACTIONS:
+            return None, cls._error(ErrorType.UNKNOWN_ACTION, f"Unknown action '{action}'")
+        required = {"work": "job_id", "buy": "item"}.get(action)
+        if required and (required not in data or data[required] in (None, "")):
+            return None, cls._error(ErrorType.MISSING_ARGUMENT,
+                                   f"Action '{action}' requires string argument '{required}'")
         try:
-            trace_obj = None
-            if "trace" in data and isinstance(data["trace"], dict):
-                trace_obj = DecisionTrace(**data["trace"])
-
-            prediction_obj = None
-            if "prediction" in data and isinstance(data["prediction"], dict):
-                prediction_obj = ActionPrediction(**data["prediction"])
-
-            proposal = ActionProposal(
-                action=action_name,
-                job_id=data.get("job_id"),
-                item=data.get("item"),
-                amount=data.get("amount", 1),
-                minutes=data.get("minutes", 60),
-                prediction=prediction_obj,
-                trace=trace_obj,
-            )
-            return proposal, None
-
-        except ValidationError as ve:
-            return None, BenchmarkError(
-                category=ErrorCategory.SCHEMA,
-                error_type=ErrorType.INVALID_SCHEMA,
-                message=f"Pydantic validation failed: {str(ve)}",
-            )
+            return ActionProposal.model_validate(data), None
+        except ValidationError as error:
+            first = error.errors()[0]
+            kind = first["type"]
+            if kind.endswith("_type"):
+                code = ErrorType.WRONG_TYPE
+            elif kind in ("greater_than", "greater_than_equal", "less_than", "less_than_equal", "finite_number"):
+                code = ErrorType.OUT_OF_RANGE
+            elif kind == "extra_forbidden":
+                code = ErrorType.EXTRA_ARGUMENT
+            elif kind == "missing":
+                code = ErrorType.MISSING_ARGUMENT
+            elif first["loc"] == ("hours",):
+                code = ErrorType.OUT_OF_RANGE
+            else:
+                code = ErrorType.INVALID_SCHEMA
+            return None, cls._error(code, f"Invalid action schema: {error}")

@@ -71,8 +71,8 @@ def test_paired_seeds_baseline_calibration(tmp_path):
         decisions = db.get_run_decisions(run_id)
         dec_dicts = [dict(d) for d in decisions]
         
-        cursor.execute("SELECT * FROM outcomes WHERE run_id = ?", (run_id,))
-        outcome = cursor.fetchone()
+        with db._get_connection() as conn:
+            outcome = conn.execute("SELECT * FROM outcomes WHERE run_id = ?", (run_id,)).fetchone()
         out_dict = dict(outcome) if outcome else None
 
         attribution = FailureAnalysisEngine.analyze_run_failures(dec_dicts, out_dict)

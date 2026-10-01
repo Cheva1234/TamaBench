@@ -10,7 +10,7 @@ class NoProgressAgent(BaseAgent):
         super().__init__(name="NoProgressAgent")
 
     def select_action(self, observation):
-        proposal = ActionProposal(action="feed")
+        proposal = ActionProposal(action="wake")
         return json.dumps(proposal.model_dump(exclude_none=True)), proposal, None
 
 
@@ -30,4 +30,4 @@ def test_runner_terminates_an_agent_that_repeats_zero_time_actions(tmp_path):
 
     assert metrics.survived is False
     assert metrics.simulated_days == 0.0
-    assert metrics.total_decisions == 4
+    assert metrics.total_decisions == 3

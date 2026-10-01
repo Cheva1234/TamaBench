@@ -1,181 +1,84 @@
-"""4-Layer Benchmark V1 Report Generator.
-
-Generates comprehensive reporting across:
-Layer 1: Overall Summary (Survival, Pet Care, Economy, Schema, Accuracy, Compute)
-Layer 2: Failure Distribution (Schema, Precondition, Bad Planning, Bad Prediction, Resource Management)
-Layer 3: Paired Seed Comparison Matrix
-Layer 4: Detailed Episode Timeline Trace
-"""
-
+"""Truthful, configuration-separated reports; report-v1 remains a command alias."""
+from dataclasses import asdict
 import json
-from typing import Any
+import math
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from tamabench.logging.database import DatabaseStore
-from tamabench.metrics.failure_analysis import FailureAnalysisEngine, FailureCategory
+from tamabench.metrics.calculator import BenchmarkMetricsCalculator
+
+
+SCIENTIFIC_STATUSES = {"completed", "died", "invalid_action_abort", "stalled", "budget_exhausted"}
+
+
+def wilson_interval(successes, count):
+    """95% binomial Wilson interval; descriptive uncertainty, not a ranking test."""
+    if count == 0:
+        return None
+    z = 1.959963984540054
+    p = successes / count
+    denominator = 1 + z*z/count
+    center = (p + z*z/(2*count))/denominator
+    half = z * math.sqrt(p*(1-p)/count + z*z/(4*count*count))/denominator
+    return [max(0.0, center-half), min(1.0, center+half)]
 
 
 class ReportV1Generator:
-    def __init__(self, db_path: str = "tamabench_results.db"):
-        self.db = DatabaseStore(db_path=db_path)
+    def __init__(self, db_path="tamabench_results.db"):
+        self.db = DatabaseStore(db_path)
         self.console = Console()
+        self.calculator = BenchmarkMetricsCalculator(db_path)
 
-    def generate_report(self, run_ids: list[str] = None):
-        """Renders 4-Layer Report V1 to terminal."""
-        with self.db._get_connection() as conn:
-            cursor = conn.cursor()
-            if run_ids:
-                placeholders = ",".join("?" for _ in run_ids)
-                cursor.execute(f"SELECT * FROM runs WHERE run_id IN ({placeholders})", run_ids)
+    def records(self, run_ids=None, experiment_id=None):
+        selected = set(run_ids) if run_ids else None
+        result = []
+        for run in self.db.list_runs(experiment_id):
+            if selected is not None and run["run_id"] not in selected:
+                continue
+            row = dict(run)
+            if row["status"] in SCIENTIFIC_STATUSES:
+                row["metrics"] = asdict(self.calculator.calculate_run_metrics(row["run_id"]))
             else:
-                cursor.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50")
-            runs = cursor.fetchall()
+                row["metrics"] = None
+            result.append(row)
+        return result
 
-        if not runs:
-            self.console.print("[yellow]No runs found in database.[/yellow]")
-            return
-
-        self.console.print("\n[bold cyan]TamaBench V1 — 4-Layer Real Model Benchmark Report[/bold cyan]\n")
-
-        # Layer 1: Overall Summary Matrix
-        self._render_overall_matrix(runs)
-
-        # Layer 2: Failure Distribution Breakdown
-        self._render_failure_distribution(runs)
-
-        # Layer 3: Paired Seed Comparison Table
-        self._render_paired_seed_matrix(runs)
-
-        # Layer 4: Episode Timeline Trace Sample
-        if runs:
-            self._render_episode_trace(runs[0]["run_id"])
-
-    def _render_overall_matrix(self, runs):
-        table = Table(title="Layer 1: Overall Model Performance Summary", border_style="cyan")
-        table.add_column("Agent / Model", style="bold white")
-        table.add_column("Seed Range", style="yellow")
-        table.add_column("Survival Rate", style="green", justify="right")
-        table.add_column("Avg Health", style="cyan", justify="right")
-        table.add_column("Valid Action Rate", style="magenta", justify="right")
-        table.add_column("Avg Income", style="yellow", justify="right")
-
-        # Group runs by agent_type
-        agent_groups: dict[str, list] = {}
-        for r in runs:
-            agent = r["agent_type"]
-            agent_groups.setdefault(agent, []).append(r)
-
-        for agent, r_list in agent_groups.items():
-            seeds = [r["seed"] for r in r_list]
-            seed_str = f"{min(seeds)}:{max(seeds)}" if seeds else "-"
-
-            survived_count = sum(1 for r in r_list if r["survived"])
-            surv_rate = (survived_count / len(r_list)) * 100.0 if r_list else 0.0
-
-            table.add_row(
-                agent,
-                seed_str,
-                f"{surv_rate:.1f}%",
-                "82.4",
-                "98.5%",
-                "$140",
-            )
-        self.console.print(table)
-
-    def _render_failure_distribution(self, runs):
-        table = Table(title="Layer 2: Failure Distribution Breakdown (Informs V2 Harness)", border_style="magenta")
-        table.add_column("Failure Category", style="bold white")
-        table.add_column("Count", style="yellow", justify="right")
-        table.add_column("Percentage", style="red", justify="right")
-        table.add_column("Recommended Harness Component", style="cyan")
-
-        cat_counts = {c.value: 0 for c in FailureCategory}
-        total_failures = 0
-
-        for r in runs:
-            run_id = r["run_id"]
-            decisions = [dict(d) for d in self.db.get_run_decisions(run_id)]
-            with self.db._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM outcomes WHERE run_id = ?", (run_id,))
-                outcome = cursor.fetchone()
-                outcome_dict = dict(outcome) if outcome else None
-
-            attribution = FailureAnalysisEngine.analyze_run_failures(decisions, outcome_dict)
-            if attribution.failure_primary != FailureCategory.OTHER:
-                cat_counts[attribution.failure_primary.value] += 1
-                total_failures += 1
-
-        harness_map = {
-            "SCHEMA": "Action / Schema Guard",
-            "PRECONDITION": "Precondition Verifier",
-            "BAD_PREDICTION": "Consequence Estimator / World Model",
-            "RESOURCE_MANAGEMENT": "Work Harness / Economy Coordinator",
-            "BAD_PLANNING": "Planner / Long-Horizon Coordinator",
-            "OTHER": "General Tuning",
-        }
-
-        for cat, count in cat_counts.items():
-            pct = (count / total_failures * 100.0) if total_failures > 0 else 0.0
-            table.add_row(
-                cat,
-                str(count),
-                f"{pct:.1f}%",
-                harness_map.get(cat, "General"),
-            )
-        self.console.print(table)
-
-    def _render_paired_seed_matrix(self, runs):
-        table = Table(title="Layer 3: Paired Seed Comparison Matrix", border_style="green")
-        table.add_column("Seed", style="bold white", justify="center")
-        table.add_column("RuleAgent", style="cyan", justify="center")
-        table.add_column("Model Outcome", style="yellow", justify="center")
-        table.add_column("Status / Inspection Delta", style="magenta")
-
-        # Group by seed
-        seeds_map: dict[int, dict] = {}
-        for r in runs:
-            seed = r["seed"]
-            agent = r["agent_type"]
-            surv = "PASS" if r["survived"] else "FAIL"
-            seeds_map.setdefault(seed, {})[agent] = surv
-
-        for seed in sorted(list(seeds_map.keys()))[:15]:
-            agents = seeds_map[seed]
-            rule_res = agents.get("RuleAgent", "-")
-            model_res = next((res for name, res in agents.items() if name != "RuleAgent"), "-")
-
-            delta = "Identical"
-            if rule_res == "PASS" and model_res == "FAIL":
-                delta = "[red]Rule > Model (Inspect Failure)[/red]"
-            elif rule_res == "FAIL" and model_res == "PASS":
-                delta = "[green]Model > Rule (Optimal Advantage)[/green]"
-
-            table.add_row(
-                f"#{seed:03d}",
-                f"[{'green' if rule_res == 'PASS' else 'red'}]{rule_res}[/]",
-                f"[{'green' if model_res == 'PASS' else 'red'}]{model_res}[/]",
-                delta,
-            )
-        self.console.print(table)
-
-    def _render_episode_trace(self, run_id: str):
-        decisions = self.db.get_run_decisions(run_id)
-        if not decisions:
-            return
-
-        self.console.print(f"\n[bold yellow]Layer 4: Episode Timeline Trace (Run: {run_id})[/bold yellow]\n")
-
-        trace_text = ""
-        for d in decisions[:5]:
-            step_idx = d["step_index"]
-            day = d["day"]
-            hour = d["hour"]
-            min_ = d["minute"]
-            action = d["action_name"]
-            is_valid = "VALID" if d["is_env_valid"] else f"INVALID ({d['error_type']})"
-
-            trace_text += f"[bold white]Day {day} {hour:02d}:{min_:02d}[/bold white] | Step #{step_idx} | Action: [cyan]{action}[/cyan] ({is_valid})\n"
-
-        self.console.print(Panel(trace_text.strip(), title="Timeline Excerpt", border_style="yellow"))
+    def generate_report(self, run_ids=None, experiment_id=None):
+        records = self.records(run_ids, experiment_id)
+        if not records:
+            self.console.print("No runs found in database.")
+            return records
+        self.console.print("\n[bold]TamaBench V2 evidence report[/bold]")
+        groups = {}
+        for row in records:
+            key = (row["config_hash"] or "legacy", row["agent_type"], row["environment_version"])
+            groups.setdefault(key, []).append(row)
+        for (fingerprint, agent, version), rows in groups.items():
+            table = Table(title=f"{agent} | environment {version} | config {fingerprint[:12]}")
+            for title in ("Run", "Seed", "Status", "Days", "Time avg health", "Valid actions", "Income", "Requests"):
+                table.add_column(title)
+            for row in rows:
+                metric = row["metrics"]
+                values = (f"{metric['simulated_days']:.3f}", f"{metric['avg_health']:.2f}",
+                          (f"{metric['valid_action_rate']:.1f}%" if metric["valid_action_rate"] is not None else "N/A"), str(metric['total_income']), str(metric['api_calls'])) if metric else ("N/A",)*5
+                table.add_row(row["run_id"], str(row["seed"]), row["status"], *values)
+            self.console.print(table)
+            scientific = [r for r in rows if r["status"] in SCIENTIFIC_STATUSES]
+            # Repeated attempts of the same seed are not independent replicates.
+            per_seed = {}
+            for row in scientific:
+                per_seed.setdefault(row["seed"], row)
+            success = sum(bool(r["survived"]) for r in per_seed.values())
+            interval = wilson_interval(success, len(per_seed))
+            if interval:
+                self.console.print(f"First finished attempt per seed: {success}/{len(per_seed)} survived; "
+                                   f"95% Wilson interval {interval[0]*100:.1f}–{interval[1]*100:.1f}%")
+            extra = len(scientific) - len(per_seed)
+            if extra:
+                self.console.print(f"{extra} additional finished attempts shown above but excluded from the per-seed summary.")
+            excluded = len(rows)-len(scientific)
+            if excluded:
+                self.console.print(f"{excluded} incomplete/infrastructure/legacy records excluded; rerun or inspect them before comparison.")
+        self.console.print("Configurations are not pooled. Intervals are descriptive; compare preregistered paired seed sets. "
+                           "The legacy composite score is secondary, and unsupported metrics remain unavailable.")
+        return records

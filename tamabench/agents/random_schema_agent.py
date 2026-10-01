@@ -16,7 +16,12 @@ from tamabench.schemas.errors import BenchmarkError
 class RandomSchemaAgent(BaseAgent):
     def __init__(self, seed: int = 42):
         super().__init__(name="RandomSchemaAgent")
+        self.seed = seed
         self.rng = random.Random(seed)
+
+    def reset_episode(self):
+        self.rng.seed(self.seed)
+        self.reset_decision_metadata()
 
     def select_action(
         self, observation: Observation

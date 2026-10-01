@@ -14,7 +14,7 @@ from tamabench.agents.rule_agent import RuleAgent
 @pytest.mark.calibration
 def test_context_growth_stationarity_over_30_days():
     env = TamaEnv()
-    obs = env.reset(seed=1842)
+    obs = env.reset(seed=1842, max_simulated_minutes=43200)
     agent = RuleAgent()
 
     sampled_days: list[float] = []
@@ -24,7 +24,10 @@ def test_context_growth_stationarity_over_30_days():
     max_minutes = 43200  # 30 days
     last_sampled_day = -1
 
+    steps = 0
     while env.state.total_minutes < max_minutes:
+        steps += 1
+        assert steps < 10000, "Context fixture stopped making progress"
         # Keep pet alive and state stable for 30-day context capacity benchmark
         if env.terminated:
             env.terminated = False

@@ -1,4 +1,4 @@
-"""Environment Specification Loader and SHA-256 Spec Hash Generator for TamaBench V1."""
+"""Environment Specification Loader and SHA-256 Spec Hash Generator for TamaBench contract 2.0."""
 
 import hashlib
 import os
@@ -12,7 +12,7 @@ class EnvironmentSpecLoader:
     @classmethod
     def get_spec_filepath(cls) -> str:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(base_dir, "environment_v1.yaml")
+        return os.path.join(base_dir, "environment_v2.yaml")
 
     @classmethod
     def load_spec(cls) -> dict[str, Any]:
@@ -23,8 +23,6 @@ class EnvironmentSpecLoader:
         with open(filepath, "r", encoding="utf-8") as f:
             raw_content = f.read()
 
-        # Parse simple key-value YAML without external heavy dependencies if possible
-        import pydantic
         # Compute SHA-256 hash of raw YAML file content
         content_bytes = raw_content.encode("utf-8")
         spec_hash = f"sha256:{hashlib.sha256(content_bytes).hexdigest()}"

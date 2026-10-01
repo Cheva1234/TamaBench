@@ -1,0 +1,102 @@
+# Authoritative behavioral contract, not model/runtime tuning defaults.
+benchmark_version: "2.0.0"
+environment_version: "2.0.0"
+scenario_id: "dynamic_v2"
+scenario_version: 2
+scenario_aliases:
+  standard_v1: dynamic_v2 # compatibility spelling; does not emulate historical V1
+unknown_scenarios: reject
+max_simulated_minutes: 10080 # seven days; reset may explicitly override
+
+initial_state:
+  agent: {money: 50, energy: 100, activity: idle}
+  pet: {health: 100, hunger: 100, energy: 80, happiness: 70, cleanliness: 90, is_sick: false, is_sleeping: false, age: 0}
+  inventory: {food: 3, medicine: 1}
+
+dynamics:
+  arithmetic: integer_hundredths
+  tick_minutes: 1
+  order: [normalize_sleep_transitions, update_needs, update_health, update_agent_energy, automatic_sleep_transitions, scheduled_events]
+  hunger_means: fullness # 0 starving; 100 full
+  hunger_rate: 0.30
+  critical_hunger_threshold_exclusive: 15.0
+  low_cleanliness_threshold_exclusive: 20.0
+  sleep_health_recovery_fullness_threshold_inclusive: 50.0
+  awake_pet_energy_decay: 0.20
+  sleep_pet_energy_recovery: 0.50
+  cleanliness_rate: 0.15
+  happiness_decay_rate: 0.08
+  critical_hunger_health_penalty: 0.20
+  low_cleanliness_health_penalty: 0.10
+  sickness_health_penalty: 0.30
+  sleep_health_recovery: 0.05 # only while pet sleeping, not sick, fullness >= 50
+  agent_awake_energy_decay: 0.12
+  agent_sleep_energy_recovery: 0.40
+  clamp_stats: [0, 100]
+  health_predicates: post_need_update_with_sleep_state_for_this_minute
+  pet_auto_sleep_energy: 0
+  pet_auto_wake_energy: 100
+  agent_auto_wake_energy: 100
+  death: stop_at_first_minute_with_health_zero
+  horizon: clamp_all_actions_and_time_advances_to_configured_horizon
+  death_on_scheduled_event_minute: death_stops_before_event
+
+welfare:
+  sampling: every_simulated_minute_end_after_dynamics
+  health_integral: exact_sum_of_minute_end_health
+  happiness_integral: exact_sum_of_minute_end_happiness
+  average: integral_divided_by_actual_elapsed_minutes
+  zero_minute_average: {health: 100, happiness: 70}
+  minimum_health: minimum_of_initial_and_all_minute_end_health
+  interruptions: include_actual_elapsed_minutes_only
+
+validation:
+  input: complete_strict_json_object_or_equivalent_dictionary_or_typed_proposal
+  repair_or_prose_extraction: false
+  duplicate_keys_and_nonfinite_numbers: reject
+  unknown_fields_and_actions: reject
+  bool_as_integer: reject
+  amount_and_minutes: positive_strict_integers
+  sleep_hours: [3, 5, 8]
+  agent_energy_preconditions: observed_whole_units_python_round_ties_to_even
+  invalid_action: no_state_change_no_time_advance
+
+actions:
+  observe: {minutes: 1}
+  feed: {minutes: 2, food_cost: 1, fullness_gain: 35, happiness_gain: 5, requires_pet_awake: true}
+  play: {minutes: 15, agent_energy_cost: 10, pet_energy_cost: 10, cleanliness_cost: 5, happiness_gain: 20, requires_pet_awake: true}
+  clean: {minutes: 10, agent_energy_cost: 5, cleanliness_set: 100, happiness_gain: 5, requires_pet_awake: true}
+  heal: {minutes: 5, medicine_cost: 1, health_gain: 15, cures_sickness: true, requires_pet_awake: true}
+  sleep: {hours_default: 3, allowed_hours: [3, 5, 8], requires_pet_awake: true, both_start_sleeping: true, both_wake_on_full_completion: true}
+  wake: {minutes: 1, requires_pet_sleeping: true, both_wake: true}
+  wait: {minutes_default: 30}
+  buy: {minutes: 2, amount_default: 1, requires_item: true, payment_and_inventory_at_start: true}
+  work: {requires_job_id: true, quote_locked_at_start: true, reward_and_fixed_energy_charge_on_alive_completion_only: true}
+  # Immediate feed/play/clean/heal/buy effects commit at start, even if their
+  # subsequent simulation duration is interrupted. Work is completion-based.
+  success: action_accepted
+  completed: full_requested_duration_elapsed_and_pet_alive
+  execution_minutes: actual_elapsed_minutes
+  horizon_reached: independent_of_pet_death
+
+economy:
+  rounding: python_round_ties_to_even
+  formula: "round(limit + (initial - limit) * exp(-0.0005 * total_minutes))"
+  jobs:
+    - {id: cafe_shift, name: "Cafe Shift", duration_minutes: 60, initial_reward: 60, limit_reward: 30, energy_cost: 20}
+    - {id: delivery, name: "Express Delivery", duration_minutes: 120, initial_reward: 120, limit_reward: 60, energy_cost: 40}
+    - {id: freelance, name: "Freelance Task", duration_minutes: 30, initial_reward: 20, limit_reward: 10, energy_cost: 12}
+  shop:
+    - {item: food, initial_cost: 10, limit_cost: 30}
+    - {item: medicine, initial_cost: 25, limit_cost: 75}
+
+events:
+  sickness_first_minute_uniform_inclusive: [720, 1440]
+  sickness_interval_uniform_inclusive: [1440, 2880]
+  schedule_rng: "random.Random(episode_seed)"
+  sickness_roll_rng: "random.Random(event_minute).random()"
+  low_cleanliness_threshold_exclusive: 50
+  low_cleanliness_sickness_probability: 0.50
+  normal_cleanliness_sickness_probability: 0.15
+  scheduled_before_horizon_exclusive: true
+  event_history_records: scheduled_risk_checks_even_if_sickness_does_not_occur

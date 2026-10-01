@@ -2,22 +2,39 @@
 
 import json
 import sqlite3
+from pathlib import Path
+from contextlib import contextmanager
 from typing import Any, Optional
 
 
 class DatabaseStore:
     def __init__(self, db_path: str = "tamabench_results.db"):
         self.db_path = db_path
+        Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        with self._get_connection() as conn:
+            self._columns = {table: {row[1] for row in conn.execute(f"PRAGMA table_info({table})")} for table in ("runs", "decisions", "decision_traces", "runtime_metrics", "outcomes")}
+        self._sql_cache = {}
 
-    def _get_connection(self) -> sqlite3.Connection:
+    def connect(self) -> sqlite3.Connection:
+        """A caller-owned connection; one is reused by the writer thread."""
         conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL;")
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    @contextmanager
+    def _get_connection(self):
+        conn = self.connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
         with self._get_connection() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             cursor = conn.cursor()
 
             # 1. Runs Table
@@ -148,7 +165,24 @@ class DatabaseStore:
     def _ensure_columns(conn: sqlite3.Connection):
         """Add V1.1 columns to databases created by V1 without destructive migration."""
         migrations = {
+            "runs": {
+                "experiment_id": "TEXT", "config_hash": "TEXT", "config_json": "TEXT",
+                "status": "TEXT NOT NULL DEFAULT 'legacy'", "termination_reason": "TEXT",
+                "max_simulated_minutes": "INTEGER", "episode_wall_time_ms": "REAL",
+                "warmup_api_calls": "INTEGER DEFAULT 0", "warmup_input_tokens": "INTEGER DEFAULT 0",
+                "warmup_output_tokens": "INTEGER DEFAULT 0", "warmup_ms": "REAL DEFAULT 0",
+                "generation_api_calls": "INTEGER", "generation_input_tokens": "INTEGER",
+                "generation_output_tokens": "INTEGER", "generation_ms": "REAL", "token_usage_complete": "INTEGER DEFAULT 1",
+            },
+            "outcomes": {
+                "status": "TEXT NOT NULL DEFAULT 'legacy'", "termination_reason": "TEXT",
+                "simulated_minutes": "INTEGER", "episode_wall_time_ms": "REAL",
+                "health_integral": "REAL", "happiness_integral": "REAL",
+            },
             "decisions": {
+                "action_source": "TEXT DEFAULT 'unknown'", "original_action_json": "TEXT",
+                "override_reason": "TEXT", "action_completed": "INTEGER DEFAULT 1",
+                "schema_observed": "INTEGER DEFAULT 1", "attempts_json": "TEXT",
                 "finish_reason": "TEXT",
                 "was_truncated": "INTEGER NOT NULL DEFAULT 0",
                 "generation_attempt": "INTEGER NOT NULL DEFAULT 1",
@@ -180,121 +214,61 @@ class DatabaseStore:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         conn.commit()
 
-    def record_run(self, run_data: dict[str, Any]):
-        with self._get_connection() as conn:
-            conn.execute("""
-            INSERT OR REPLACE INTO runs (
-                run_id, seed, scenario_id, scenario_version, benchmark_version,
-                environment_version, mode, agent_type, model_name, schema_mode,
-                started_at, ended_at, simulated_duration_minutes, survived
-            ) VALUES (
-                :run_id, :seed, :scenario_id, :scenario_version, :benchmark_version,
-                :environment_version, :mode, :agent_type, :model_name, :schema_mode,
-                :started_at, :ended_at, :simulated_duration_minutes, :survived
-            );
-            """, run_data)
+    def _write(self, table: str, data: dict[str, Any], conn=None):
+        columns = tuple(k for k in data if k in self._columns[table])
+        if not columns:
+            raise ValueError(f"No recognized fields for {table}")
+        primary = "decision_id" if table in {"decisions", "decision_traces", "runtime_metrics"} else "run_id"
+        key = (table, columns)
+        sql = self._sql_cache.get(key)
+        if sql is None:
+            update = ",".join(f"{k}=excluded.{k}" for k in columns if k != primary)
+            sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)}) ON CONFLICT({primary}) DO UPDATE SET {update}"
+            self._sql_cache[key] = sql
+        values = tuple(data[k] for k in columns)
+        if conn is not None:
+            conn.execute(sql, values)
+        else:
+            with self._get_connection() as connection:
+                connection.execute(sql, values)
 
-    def record_decision(self, decision_data: dict[str, Any]):
-        decision_data = {
-            "finish_reason": None,
-            "was_truncated": 0,
-            "generation_attempt": 1,
-            "attempt_count": 1,
-            "first_pass_valid": 1,
-            "final_valid": 1,
-            "recovered": 0,
-            "first_failure_type": None,
-            **decision_data,
-        }
-        with self._get_connection() as conn:
-            conn.execute("""
-            INSERT OR REPLACE INTO decisions (
-                decision_id, run_id, step_index, day, hour, minute, state_hash,
-                next_state_hash, observation_json, raw_model_output, parsed_action_json,
-                action_name, is_schema_valid, is_env_valid, error_category, error_type,
-                error_message, execution_minutes, finish_reason, was_truncated,
-                generation_attempt, attempt_count, first_pass_valid, final_valid,
-                recovered, first_failure_type
-            ) VALUES (
-                :decision_id, :run_id, :step_index, :day, :hour, :minute, :state_hash,
-                :next_state_hash, :observation_json, :raw_model_output, :parsed_action_json,
-                :action_name, :is_schema_valid, :is_env_valid, :error_category, :error_type,
-                :error_message, :execution_minutes, :finish_reason, :was_truncated,
-                :generation_attempt, :attempt_count, :first_pass_valid, :final_valid,
-                :recovered, :first_failure_type
-            );
-            """, decision_data)
+    def record_run(self, data, conn=None):
+        self._write("runs", data, conn)
 
-    def record_decision_trace(self, trace_data: dict[str, Any]):
-        with self._get_connection() as conn:
-            conn.execute("""
-            INSERT OR REPLACE INTO decision_traces (
-                decision_id, run_id, situation_summary, current_priority,
-                options_considered, chosen_action, decision_rationale, expected_result,
-                confidence, provider_reasoning
-            ) VALUES (
-                :decision_id, :run_id, :situation_summary, :current_priority,
-                :options_considered, :chosen_action, :decision_rationale, :expected_result,
-                :confidence, :provider_reasoning
-            );
-            """, trace_data)
+    def record_decision(self, data, conn=None):
+        self._write("decisions", data, conn)
 
-    def record_runtime_metrics(self, runtime_data: dict[str, Any]):
-        runtime_data = {
-            "model_load_ms": 0.0,
-            "ttft_ms": 0.0,
-            "generation_ms": 0.0,
-            "schema_validation_ms": 0.0,
-            "total_decision_ms": 0.0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "ram_peak_mb": 0.0,
-            "vram_peak_mb": 0.0,
-            "cost_usd": 0.0,
-            "reasoning_tokens": 0,
-            "json_tokens": 0,
-            "total_tokens": 0,
-            "model_resident": 0,
-            "api_calls": 0,
-            "model_warmup_ms": 0.0,
-            "simulation_ms": 0.0,
-            "logging_ms": 0.0,
-            "other_ms": 0.0,
-            **runtime_data,
-        }
-        with self._get_connection() as conn:
-            conn.execute("""
-            INSERT OR REPLACE INTO runtime_metrics (
-                decision_id, run_id, model_load_ms, ttft_ms, generation_ms,
-                schema_validation_ms, total_decision_ms, input_tokens, output_tokens,
-                reasoning_tokens, json_tokens, total_tokens, ram_peak_mb, vram_peak_mb,
-                cost_usd, model_resident, api_calls, model_warmup_ms,
-                simulation_ms, logging_ms, other_ms
-            ) VALUES (
-                :decision_id, :run_id, :model_load_ms, :ttft_ms, :generation_ms,
-                :schema_validation_ms, :total_decision_ms, :input_tokens, :output_tokens,
-                :reasoning_tokens, :json_tokens, :total_tokens, :ram_peak_mb, :vram_peak_mb,
-                :cost_usd, :model_resident, :api_calls, :model_warmup_ms,
-                :simulation_ms, :logging_ms, :other_ms
-            );
-            """, runtime_data)
+    def record_decision_trace(self, data, conn=None):
+        self._write("decision_traces", data, conn)
 
-    def record_outcome(self, outcome_data: dict[str, Any]):
-        with self._get_connection() as conn:
-            conn.execute("""
-            INSERT OR REPLACE INTO outcomes (
-                run_id, survived, simulated_days, final_health, min_health, avg_health,
-                final_happiness, avg_happiness, final_money, final_energy,
-                total_income, total_spending, jobs_completed, jobs_failed
-            ) VALUES (
-                :run_id, :survived, :simulated_days, :final_health, :min_health, :avg_health,
-                :final_happiness, :avg_happiness, :final_money, :final_energy,
-                :total_income, :total_spending, :jobs_completed, :jobs_failed
-            );
-            """, outcome_data)
+    def record_runtime_metrics(self, data, conn=None):
+        self._write("runtime_metrics", data, conn)
+
+    def record_outcome(self, data, conn=None):
+        self._write("outcomes", data, conn)
+
+    def finalize_run(self, run_data, outcome_data, conn=None):
+        """Run status and outcome are committed in the same transaction."""
+        if conn is None:
+            with self._get_connection() as connection:
+                self.finalize_run(run_data, outcome_data, connection)
+            return
+        if outcome_data is not None:
+            self.record_outcome(outcome_data, conn)
+        allowed = {k: v for k, v in run_data.items() if k in self._columns["runs"] and k != "run_id"}
+        assignment = ",".join(f"{k}=?" for k in allowed)
+        conn.execute(f"UPDATE runs SET {assignment} WHERE run_id=?", (*allowed.values(), run_data["run_id"]))
 
     def get_run_decisions(self, run_id: str) -> list[sqlite3.Row]:
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM decisions WHERE run_id = ? ORDER BY step_index ASC", (run_id,))
-            return cursor.fetchall()
+            return conn.execute("SELECT * FROM decisions WHERE run_id=? ORDER BY step_index", (run_id,)).fetchall()
+
+    def get_run(self, run_id):
+        with self._get_connection() as conn:
+            return conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+
+    def list_runs(self, experiment_id=None):
+        with self._get_connection() as conn:
+            if experiment_id:
+                return conn.execute("SELECT * FROM runs WHERE experiment_id=? ORDER BY started_at,run_id", (experiment_id,)).fetchall()
+            return conn.execute("SELECT * FROM runs ORDER BY started_at,run_id").fetchall()

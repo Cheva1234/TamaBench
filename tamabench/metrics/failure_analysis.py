@@ -57,25 +57,19 @@ class FailureAnalysisEngine:
         if precondition_errors > 0:
             contributors.append(FailureCategory.PRECONDITION)
 
-        # Determine Primary Category
-        if schema_errors > 5:
+        status = (outcome or {}).get("status", "legacy")
+        if status in {"infrastructure_failed", "interrupted", "budget_exhausted"}:
+            primary = FailureCategory.OTHER
+            desc = f"Episode ended with status {status}; no model-quality cause inferred."
+        elif schema_errors >= 5:
             primary = FailureCategory.SCHEMA
-            desc = f"Episode failed due to high schema error rate ({schema_errors} schema errors)."
-        elif precondition_errors > 5:
+            desc = f"Recorded {schema_errors} schema errors; inspect the terminal reason."
+        elif precondition_errors >= 5:
             primary = FailureCategory.PRECONDITION
-            desc = f"Episode failed due to persistent precondition violations ({precondition_errors} precondition errors)."
-        elif outcome and not bool(outcome.get("survived")):
-            if outcome.get("total_spending", 0) == 0 and outcome.get("final_money", 0) >= 50:
-                primary = FailureCategory.RESOURCE_MANAGEMENT
-                contributors.append(FailureCategory.RESOURCE_MANAGEMENT)
-                desc = "Pet died due to resource management failure (agent had funds but failed to purchase supplies)."
-            else:
-                primary = FailureCategory.BAD_PLANNING
-                contributors.append(FailureCategory.BAD_PLANNING)
-                desc = "Pet died due to bad long-horizon planning and timing choice."
+            desc = f"Recorded {precondition_errors} precondition errors; inspect the terminal reason."
         else:
             primary = FailureCategory.OTHER
-            desc = "Episode completed cleanly or failed due to unclassified factors."
+            desc = "No causal planning or resource attribution established from these records."
 
         # Unique contributors excluding primary
         unique_contributors = [c for c in list(set(contributors)) if c != primary]

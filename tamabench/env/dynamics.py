@@ -1,180 +1,124 @@
-"""Delta-time based state dynamics engine for TamaBench V1.
+"""Exact discrete-minute dynamics with event-driven analytical acceleration.
 
-Uses closed-form linear rate equations for advance_time(minutes)
-avoiding expensive minute-by-minute loops while supporting event scheduler jumps.
+Contract 2.0 uses integer hundredths for state transitions. A minute first
+updates needs, then health using those updated needs and the sleep state for
+that minute, then applies automatic wake/sleep transitions. Constant-rate
+segments are summed analytically, including the minute-end welfare samples.
 """
 
-import math
 from typing import Tuple
 from tamabench.env.state import WorldState
 
 
 class DynamicsEngine:
-    # Standard rates per simulation minute
-    HUNGER_RATE: float = 0.30              # -18 / hour from the fullness meter
-    CRITICAL_HUNGER_THRESHOLD: float = 15.0
-    SLEEP_HEALTH_RECOVERY_THRESHOLD: float = 50.0
-    AWAKE_PET_ENERGY_DECAY: float = 0.20   # -12 / hour
-    SLEEP_PET_ENERGY_RECOVERY: float = 0.5 # +30 / hour
-    CLEANLINESS_RATE: float = 0.15         # -9 / hour
-    HAPPINESS_DECAY_RATE: float = 0.08     # -4.8 / hour
+    HUNGER_RATE = 0.30
+    CRITICAL_HUNGER_THRESHOLD = 15.0
+    SLEEP_HEALTH_RECOVERY_THRESHOLD = 50.0
+    AWAKE_PET_ENERGY_DECAY = 0.20
+    SLEEP_PET_ENERGY_RECOVERY = 0.50
+    CLEANLINESS_RATE = 0.15
+    HAPPINESS_DECAY_RATE = 0.08
+    CRITICAL_HUNGER_HEALTH_PENALTY = 0.20
+    LOW_CLEANLINESS_HEALTH_PENALTY = 0.10
+    SICKNESS_HEALTH_PENALTY = 0.30
+    SLEEP_HEALTH_RECOVERY = 0.05
+    AGENT_AWAKE_ENERGY_DECAY = 0.12
+    AGENT_SLEEP_ENERGY_RECOVERY = 0.40
 
-    # Health decay rates per minute when in negative conditions
-    CRITICAL_HUNGER_HEALTH_PENALTY: float = 0.2
-    LOW_CLEANLINESS_HEALTH_PENALTY: float = 0.1
-    SICKNESS_HEALTH_PENALTY: float = 0.3
-    SLEEP_HEALTH_RECOVERY: float = 0.05
-
-    # Agent energy decay rates per minute
-    AGENT_AWAKE_ENERGY_DECAY: float = 0.12 # -7.2 / hour
-    AGENT_SLEEP_ENERGY_RECOVERY: float = 0.4 # +24 / hour
+    @staticmethod
+    def _clipped_sum(start: int, rate: int, count: int) -> int:
+        """Sum clamp(start + i*rate, 0, 10000), i=1..count, exactly."""
+        if rate == 0:
+            return start * count
+        if rate < 0:
+            linear = min(count, start // -rate)
+            return linear * start + rate * linear * (linear + 1) // 2
+        linear = min(count, (10000 - start) // rate)
+        return (linear * start + rate * linear * (linear + 1) // 2
+                + (count - linear) * 10000)
 
     @classmethod
     def apply_delta_time(cls, state: WorldState, minutes: int) -> Tuple[WorldState, bool, str]:
-        """Apply closed-form updates while preserving automatic state transitions."""
-        if minutes <= 0:
-            return state, False, ""
-
+        """Jump between rule discontinuities, never between individual minutes."""
+        if type(minutes) is not int or minutes < 0:
+            raise ValueError("minutes must be a nonnegative integer")
+        pet, agent = state.pet, state.agent
+        health, hunger, energy, happiness, cleanliness, agent_energy = (
+            int(round(value * 100)) for value in (
+                pet.health, pet.hunger, pet.energy, pet.happiness,
+                pet.cleanliness, agent.energy,
+            )
+        )
         remaining = minutes
-        while remaining > 0:
-            pet = state.pet
-            agent = state.agent
-
-            if pet.is_sleeping and pet.energy >= 100.0:
+        while remaining and health > 0:
+            # Normalize instantaneous transitions before the first minute.
+            if pet.is_sleeping and energy >= 10000:
                 pet.is_sleeping = False
-                continue
-            if not pet.is_sleeping and pet.energy <= 0.0:
+            elif not pet.is_sleeping and energy <= 0:
                 pet.is_sleeping = True
-                continue
-            if agent.current_activity == "sleeping" and agent.energy >= 100.0:
+            if agent.current_activity == "sleeping" and agent_energy >= 10000:
                 agent.current_activity = "idle"
-                continue
 
+            sleeping = pet.is_sleeping
+            agent_sleeping = agent.current_activity == "sleeping"
             segment = remaining
-            if pet.is_sleeping:
-                segment = min(
-                    segment,
-                    max(1, math.ceil((100.0 - pet.energy) / cls.SLEEP_PET_ENERGY_RECOVERY)),
-                )
-            else:
-                segment = min(
-                    segment,
-                    max(1, math.ceil(pet.energy / cls.AWAKE_PET_ENERGY_DECAY)),
-                )
-            if agent.current_activity == "sleeping":
-                segment = min(
-                    segment,
-                    max(1, math.ceil((100.0 - agent.energy) / cls.AGENT_SLEEP_ENERGY_RECOVERY)),
-                )
+            # Number of ticks through (including) the automatic transition.
+            until_pet_transition = ((10000 - energy + 49) // 50 if sleeping
+                                    else (energy + 19) // 20)
+            segment = min(segment, until_pet_transition)
+            if agent_sleeping:
+                segment = min(segment, (10000 - agent_energy + 39) // 40)
 
-            # Split one minute before discontinuous health/recovery rules so
-            # the crossing minute is evaluated with the same post-update
-            # condition as the reference tick engine.
-            if pet.hunger >= cls.CRITICAL_HUNGER_THRESHOLD:
-                crossing = int(
-                    (pet.hunger - cls.CRITICAL_HUNGER_THRESHOLD) / cls.HUNGER_RATE
-                ) + 1
-                segment = min(segment, max(1, crossing - 1))
-            if pet.cleanliness >= 20.0:
-                crossing = int((pet.cleanliness - 20.0) / cls.CLEANLINESS_RATE) + 1
-                segment = min(segment, max(1, crossing - 1))
-            if pet.is_sleeping and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD:
-                crossing = int(
-                    (pet.hunger - cls.SLEEP_HEALTH_RECOVERY_THRESHOLD) / cls.HUNGER_RATE
-                ) + 1
-                segment = min(segment, max(1, crossing - 1))
+            # Keep post-update predicates constant for every tick in a segment.
+            # Integer division avoids float ceil/floor drift at exact thresholds.
+            thresholds = [(hunger, 1500, 30), (cleanliness, 2000, 15)]
+            if sleeping:
+                thresholds.append((hunger, 5000, 30))
+            for value, threshold, decay in thresholds:
+                ticks_before_crossing = (value - threshold) // decay
+                if ticks_before_crossing >= 1:
+                    segment = min(segment, ticks_before_crossing)
 
-            health_rate = 0.0
-            if pet.hunger < cls.CRITICAL_HUNGER_THRESHOLD:
-                health_rate -= cls.CRITICAL_HUNGER_HEALTH_PENALTY
-            if pet.cleanliness < 20.0:
-                health_rate -= cls.LOW_CLEANLINESS_HEALTH_PENALTY
-            if pet.is_sick:
-                health_rate -= cls.SICKNESS_HEALTH_PENALTY
-            if (
-                pet.is_sleeping
-                and not pet.is_sick
-                and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD
-            ):
-                health_rate += cls.SLEEP_HEALTH_RECOVERY
-            if health_rate < 0.0:
-                segment = min(segment, max(1, math.ceil(pet.health / -health_rate)))
+            next_hunger = max(0, hunger - 30)
+            next_cleanliness = max(0, cleanliness - 15)
+            health_rate = (
+                (-20 if next_hunger < 1500 else 0)
+                + (-10 if next_cleanliness < 2000 else 0)
+                + (-30 if pet.is_sick else 0)
+                + (5 if sleeping and not pet.is_sick and next_hunger >= 5000 else 0)
+            )
+            if health_rate < 0:
+                segment = min(segment, (health - health_rate - 1) // -health_rate)
 
-            cls._apply_segment(state, segment)
+            stats = state.statistics
+            stats.health_centiminutes += cls._clipped_sum(health, health_rate, segment)
+            stats.happiness_centiminutes += cls._clipped_sum(happiness, -8, segment)
+            next_health = max(0, min(10000, health + health_rate * segment))
+            stats.minimum_health_centi = min(stats.minimum_health_centi, health, next_health)
+            stats.elapsed_minutes += segment
+
+            health = next_health
+            hunger = max(0, hunger - 30 * segment)
+            energy = (min(10000, energy + 50 * segment) if sleeping
+                      else max(0, energy - 20 * segment))
+            happiness = max(0, happiness - 8 * segment)
+            cleanliness = max(0, cleanliness - 15 * segment)
+            agent_energy = (min(10000, agent_energy + 40 * segment) if agent_sleeping
+                            else max(0, agent_energy - 12 * segment))
+            state.total_minutes += segment
+            pet.age += segment
             remaining -= segment
 
-            if state.pet.health <= 0.0:
-                remaining = 0
+            if sleeping and energy >= 10000:
+                pet.is_sleeping = False
+            elif not sleeping and energy <= 0:
+                pet.is_sleeping = True
+            if agent_sleeping and agent_energy >= 10000:
+                agent.current_activity = "idle"
 
-            if state.pet.is_sleeping and state.pet.energy >= 100.0:
-                state.pet.is_sleeping = False
-            elif not state.pet.is_sleeping and state.pet.energy <= 0.0:
-                state.pet.is_sleeping = True
-            if state.agent.current_activity == "sleeping" and state.agent.energy >= 100.0:
-                state.agent.current_activity = "idle"
-
-        terminated = state.pet.health <= 0.0
-        reason = "Pet died due to health reaching 0." if terminated else ""
-        return state, terminated, reason
-
-    @classmethod
-    def _apply_segment(cls, state: WorldState, minutes: int) -> None:
-        """Apply one segment with no automatic wake/sleep transition inside it."""
-
-        pet = state.pet
-        agent = state.agent
-
-        # 1. Update Pet Fullness. The public field remains `hunger` for
-        # compatibility, but 100 means fully fed and 0 means starving.
-        pet.hunger = max(0.0, pet.hunger - (cls.HUNGER_RATE * minutes))
-
-        # 2. Update Pet Energy
-        if pet.is_sleeping:
-            pet.energy = min(100.0, pet.energy + (cls.SLEEP_PET_ENERGY_RECOVERY * minutes))
-        else:
-            pet.energy = max(0.0, pet.energy - (cls.AWAKE_PET_ENERGY_DECAY * minutes))
-
-        # 3. Update Cleanliness & Happiness
-        pet.cleanliness = max(0.0, pet.cleanliness - (cls.CLEANLINESS_RATE * minutes))
-        pet.happiness = max(0.0, pet.happiness - (cls.HAPPINESS_DECAY_RATE * minutes))
-
-        # 4. Calculate Health Change
-        health_delta = 0.0
-
-        if pet.hunger < cls.CRITICAL_HUNGER_THRESHOLD:
-            health_delta -= cls.CRITICAL_HUNGER_HEALTH_PENALTY * minutes
-
-        if pet.cleanliness < 20.0:
-            health_delta -= cls.LOW_CLEANLINESS_HEALTH_PENALTY * minutes
-
-        if pet.is_sick:
-            health_delta -= cls.SICKNESS_HEALTH_PENALTY * minutes
-
-        if (
-            pet.is_sleeping
-            and not pet.is_sick
-            and pet.hunger >= cls.SLEEP_HEALTH_RECOVERY_THRESHOLD
-        ):
-            health_delta += cls.SLEEP_HEALTH_RECOVERY * minutes
-
-        pet.health = max(0.0, min(100.0, pet.health + health_delta))
-        pet.age += minutes
-
-        # 5. Update Agent State
-        if agent.current_activity == "sleeping":
-            agent.energy = min(100.0, agent.energy + (cls.AGENT_SLEEP_ENERGY_RECOVERY * minutes))
-        else:
-            agent.energy = max(0.0, agent.energy - (cls.AGENT_AWAKE_ENERGY_DECAY * minutes))
-
-        # 6. Advance World Time
-        state.total_minutes += minutes
-
-        # Keep analytical jumps and one-minute reference ticks numerically
-        # identical. This only removes floating-point residue; the configured
-        # V1 rates and transition rules remain unchanged.
-        pet.hunger = round(pet.hunger, 10)
-        pet.energy = round(pet.energy, 10)
-        pet.cleanliness = round(pet.cleanliness, 10)
-        pet.happiness = round(pet.happiness, 10)
-        pet.health = round(pet.health, 10)
-        agent.energy = round(agent.energy, 10)
+        (pet.health, pet.hunger, pet.energy, pet.happiness,
+         pet.cleanliness, agent.energy) = (
+            value / 100 for value in (health, hunger, energy, happiness, cleanliness, agent_energy)
+        )
+        terminated = health <= 0
+        return state, terminated, "Pet died due to health reaching 0." if terminated else ""

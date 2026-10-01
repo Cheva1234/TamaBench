@@ -58,6 +58,8 @@ class WakeScheduler:
         self.clean_threshold = clean_threshold
         self.sleep_energy_threshold = sleep_energy_threshold
         self.health_safety_threshold = health_safety_threshold
+        if max_wait_horizon < 1:
+            raise ValueError("max_wait_horizon must be positive")
         self.max_wait_horizon = max_wait_horizon
 
     def is_critical(self, observation: Observation) -> bool:
@@ -151,7 +153,7 @@ class WakeScheduler:
 
         if not candidates:
             return 30
-        return max(1, min(candidates))
+        return max(1, min(self.max_wait_horizon, min(candidates)))
 
     def next_wake_minutes(
         self, observation: Observation, proposal: ActionProposal
@@ -272,6 +274,10 @@ class HarnessV1Agent(BaseAgent):
         return getattr(self.model_agent, "model_name", self.model_agent.name)
 
     @property
+    def schema_mode(self):
+        return getattr(self.model_agent, "schema_mode", "typed")
+
+    @property
     def model_resident(self) -> bool:
         return bool(getattr(self.model_agent, "model_resident", False))
 
@@ -322,6 +328,8 @@ class HarnessV1Agent(BaseAgent):
 
     def reset_episode(self) -> None:
         """Clear the pending schedule and counters for a fresh episode."""
+        self.model_agent.reset_episode()
+        self.policy.reset_episode()
         self._next_wake_minute = None
         self._last_seen_minute = None
         self._last_decision_was_model = False
@@ -367,6 +375,7 @@ class HarnessV1Agent(BaseAgent):
         # the first decision of an episode, or a critical environment state.
         if (
             self._next_wake_minute is None
+            or now >= self._next_wake_minute
             or self.scheduler.is_critical(observation)
         ):
             return self._decide(observation)
@@ -389,6 +398,9 @@ class HarnessV1Agent(BaseAgent):
             getattr(self.model_agent, "last_was_truncated", False)
         )
 
+        self.last_decision.action_source = "model"
+        self.last_decision.original_action_json = json.dumps(proposal.model_dump(exclude_none=True)) if proposal else None
+        self.last_decision.override_reason = None
         if proposal is not None and err is None:
             # Harness safety layer: correct dangerous model choices before
             # committing (heal a sick pet, feed a starving pet). When an
@@ -397,6 +409,7 @@ class HarnessV1Agent(BaseAgent):
             overridden = self._safety_override(observation, proposal)
             if overridden != proposal:
                 self._harness_control = True
+                self.last_decision.override_reason = "critical_care_safety_override"
             proposal = overridden
             # Stages 2+3 (CALCULATE + SCHEDULE): store the next wake minute.
             self._next_wake_minute = (
@@ -459,16 +472,17 @@ class HarnessV1Agent(BaseAgent):
         recovery from failed model decisions, and harness-control recovery.
         """
         raw_output, proposal, err = self.policy.select_action(observation)
-        if proposal is not None and err is None:
-            self._next_wake_minute = (
-                observation.time.total_minutes
-                + self.scheduler.next_wake_minutes(observation, proposal)
-            )
-        else:
-            self._next_wake_minute = observation.time.total_minutes + 1
+        if self._next_wake_minute is None:
+            self._next_wake_minute = observation.time.total_minutes + self.scheduler.time_to_next_need(observation)
+        if proposal and proposal.action == "wait":
+            remaining = max(1, self._next_wake_minute - observation.time.total_minutes)
+            proposal = proposal.model_copy(update={"minutes": min(proposal.minutes or 30, remaining, self.scheduler.max_wait_horizon)})
+            raw_output = json.dumps(proposal.model_dump(exclude_none=True))
         self._last_decision_was_model = False
         self._scheduled_waits += 1
         self.last_decision = DecisionMetadata(
+            action_source="policy",
+            override_reason="recovery_fallback" if fallback else None,
             finish_reason=None,
             was_truncated=False,
             generation_attempt=0,

@@ -12,9 +12,13 @@ from pydantic import BaseModel, Field
 class ErrorCategory(str, Enum):
     SCHEMA = "SCHEMA"
     ENVIRONMENT = "ENVIRONMENT"
+    INFRASTRUCTURE = "INFRASTRUCTURE"
 
 
 class ErrorType(str, Enum):
+    PROVIDER_FAILURE = "PROVIDER_FAILURE"
+    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+
     # Schema Errors (Stage 1)
     INVALID_JSON = "INVALID_JSON"
     OUTPUT_TRUNCATED = "OUTPUT_TRUNCATED"

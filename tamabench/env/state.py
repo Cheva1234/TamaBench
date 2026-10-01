@@ -1,4 +1,4 @@
-"""State models and SHA-256 state hashing for TamaBench V1."""
+"""State models, exact welfare accumulators, and contract 2.0 state hashing."""
 
 import hashlib
 import json
@@ -17,9 +17,14 @@ from tamabench.schemas.observation import (
 
 @dataclass
 class AgentState:
-    money: int = 100
+    money: int = 50
     energy: float = 100.0
     current_activity: str = "idle"
+
+    @property
+    def available_energy(self) -> int:
+        """Public whole-unit energy used for all action preconditions."""
+        return int(round(self.energy))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -30,7 +35,7 @@ class PetState:
     health: float = 100.0
     # Fullness meter kept under the legacy `hunger` field name: 100 is full,
     # 0 is starving.
-    hunger: float = 80.0
+    hunger: float = 100.0
     energy: float = 80.0
     happiness: float = 70.0
     cleanliness: float = 90.0
@@ -74,6 +79,44 @@ class ShopItem:
 
 
 @dataclass
+class SimulationStatistics:
+    """Exact sum of every minute-end sample (units: statistic * minutes)."""
+
+    elapsed_minutes: int = 0
+    health_centiminutes: int = 0
+    happiness_centiminutes: int = 0
+    minimum_health_centi: int = 10000
+
+    @property
+    def health_integral(self) -> float:
+        return self.health_centiminutes / 100
+
+    @property
+    def happiness_integral(self) -> float:
+        return self.happiness_centiminutes / 100
+
+    @property
+    def min_health(self) -> float:
+        return self.minimum_health_centi / 100
+
+    @property
+    def avg_health(self) -> float:
+        return self.health_integral / self.elapsed_minutes if self.elapsed_minutes else 100.0
+
+    @property
+    def avg_happiness(self) -> float:
+        return self.happiness_integral / self.elapsed_minutes if self.elapsed_minutes else 70.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"elapsed_minutes": self.elapsed_minutes,
+                "health_integral": self.health_integral,
+                "happiness_integral": self.happiness_integral,
+                "min_health": self.min_health,
+                "avg_health": self.avg_health,
+                "avg_happiness": self.avg_happiness}
+
+
+@dataclass
 class WorldState:
     total_minutes: int = 0
     agent: AgentState = field(default_factory=AgentState)
@@ -82,11 +125,14 @@ class WorldState:
     jobs_available: list[Job] = field(default_factory=list)
     shop_items_available: list[ShopItem] = field(default_factory=list)
 
+    statistics: SimulationStatistics = field(default_factory=SimulationStatistics)
+    max_simulated_minutes: int = 7 * 24 * 60
+
     # Metadata for scenario versioning
-    benchmark_version: str = "1.1.0"
-    environment_version: str = "1.1.0"
-    scenario_id: str = "standard_v1"
-    scenario_version: int = 1
+    benchmark_version: str = "2.0.0"
+    environment_version: str = "2.0.0"
+    scenario_id: str = "dynamic_v2"
+    scenario_version: int = 2
     seed: int = 42
 
     @property
@@ -110,6 +156,10 @@ class WorldState:
 
         state_dict = {
             "time": self.total_minutes,
+            "horizon": self.max_simulated_minutes,
+            "statistics": asdict(self.statistics),
+            "benchmark_version": self.benchmark_version,
+            "environment_version": self.environment_version,
             "agent": {
                 "money": self.agent.money,
                 "energy": round(self.agent.energy, 4),
@@ -138,7 +188,7 @@ class WorldState:
             ),
             agent=AgentObservation(
                 money=self.agent.money,
-                energy=int(round(self.agent.energy)),
+                energy=self.agent.available_energy,
                 activity=self.agent.current_activity,
             ),
             pet=PetObservation(

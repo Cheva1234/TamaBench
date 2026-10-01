@@ -20,5 +20,5 @@ def test_live_display_prints_final_benchmark_report(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "TamaBench V1 Benchmark Report" in result.output
+    assert "TamaBench V2 Benchmark Report" in result.output
     assert "Survival Status:" in result.output

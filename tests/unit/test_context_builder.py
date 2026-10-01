@@ -20,8 +20,9 @@ def test_prompt_explains_fullness_direction_and_continuous_health_damage():
     assert "feeding increases hunger by 35" in prompt
     assert "hunger decreases by 18 per simulated hour" in prompt
     assert "health decreases continuously" in prompt
-    assert "3-hour sleep removes about 54 hunger" in prompt
-    assert "feed first when fullness is low" in prompt
+    assert "sleeping only recovers health when hunger is 50 or higher" in prompt
+    assert "feed first" not in prompt
+    assert "feed first when fullness is low" not in prompt
 
 
 def test_prompt_gives_small_models_minimal_valid_json_examples():

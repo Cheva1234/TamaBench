@@ -1,441 +1,155 @@
-<div align="center">
+# TamaBench 2.0
 
-# 🐾 TamaBench
+A small, reproducible autonomous-agent benchmark: keep a virtual pet healthy while managing work, money, inventory, and energy over seven simulated days.
 
-### Small Model Autonomy Benchmark
+Version 2.0 separates simulation time from model latency. Its accelerated engine jumps between events and exact integer-state thresholds; the reference engine advances minute by minute. Both produce the same states, event histories, elapsed time, and minute-weighted welfare statistics. No artificial sleeps are added.
 
-**A lightweight long-horizon benchmark for small and local LLM agents — and the automation harnesses that extend them.**
+## Quick start: CPU only
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-compatible-black.svg)](https://ollama.com/)
-
-</div>
-
----
-
-## Can a 2.6B model autonomously survive for days?
-
-TamaBench places an AI agent inside a persistent sandbox where it must:
-
-- care for a virtual pet
-- work and earn money
-- manage limited resources
-- make structured tool calls
-- plan around delayed consequences
-- recover from mistakes
-
-TamaBench measures:
-
-**Planning · Tool Reliability · Resource Management · Failure Modes · Tokens · Latency · Compute Efficiency**
-
-## The Bigger Question
-
-> How much autonomy can we extract from a small model before we need a larger model?
-
-And:
-
-> How much can an automation harness close that gap?
-
----
-
-## What is TamaBench?
-
-TamaBench is an **open benchmark for small, local, and quantized language models**. It evaluates how well a model can act as an **autonomous agent** in a real-time resource-management environment — a virtual pet (Tamagotchi) that decays over time and needs constant care.
-
-The agent must **survive 3 simulated days** by:
-- Feeding, cleaning, and healing a pet
-- Earning money through jobs to buy supplies
-- Balancing its own energy with the pet's needs
-- Reacting to random events like sickness
-
-This tests **real-world agentic capabilities** — not text generation quality, but the model's ability to **plan, prioritize, manage resources, and adapt under pressure**.
-
-The Tamagotchi-style environment is the **simulation mechanism**, not the whole identity of the project. The benchmark itself is about long-horizon autonomy: persistent decision making, tool/JSON reliability, planning under delayed consequences, resource management, failure recovery, context efficiency, and compute efficiency.
-
-### The Simulation Loop
-
-```text
- MODEL
-   ↓
- DECIDE
-   ↓
- WORK / CARE / WAIT
-   ↓
- WORLD FAST-FORWARD
-   ↓
- CONSEQUENCES
-   ↓
- NEXT WAKE
-   ↓
- MODEL
-```
-
-## Quick Demo
-
-Start a complete local autonomous-agent benchmark with:
+Python 3.10 or newer. From this checkout:
 
 ```bash
-ollama pull llama3.2:3b
-python -m tamabench.cli run \
-  --agent raw_llm \
-  --model llama3.2:3b \
-  --episodes 1 \
-  --display live
+python -m pip install -e '.[dev]'
+python -m tamabench doctor
+python -m tamabench run --agent rule --output-dir results/rule
+python -m tamabench report --output-dir results/rule
 ```
 
-Replace `llama3.2:3b` with any model served by Ollama or an OpenAI-compatible
-local endpoint. The live monitor shows the simulation state, actions, schema
-quality, economy, and the final benchmark report after the episode ends.
-### Hunger Meter Semantics
+No GPU, model download, credentials, Ollama service, or network inference is needed for the default rule baseline. For a short smoke test add `--max-simulated-minutes 240`. `tamabench` and `python -m tamabench.cli` are equivalent entry points.
 
-The `hunger` value is a **fullness meter** so that larger values are better:
+The [four-cell Colab notebook](notebooks/TamaBench_Colab.ipynb) uses exactly the same configuration and experiment functions. See [Colab setup](docs/colab.md), including the default reviewed-source-ZIP upload and optional published-ref installation.
 
-- `100` = fully fed
-- `0` = starving
-- Feeding increases the meter by `35`
-- Time lowers the meter by `18` per simulated hour
-- Health damage begins when the meter falls below `15`
+## One configuration, three entry points
 
-This meaning is intentionally explicit because autonomous agents must reason about
-whether a time-based action will leave enough food energy before they sleep, work,
-or wait.
+CLI, Python, and Colab all use `RunConfig` and `run_experiment`:
 
----
+```python
+from tamabench.config import RunConfig
+from tamabench.experiment import run_experiment
 
-## Why Use TamaBench to Select an Automation Model?
-
-Choosing an LLM for automation tasks is difficult. Standard benchmarks (MMLU, HumanEval, GSM8K) measure knowledge recall or code generation — but **they do not measure how a model behaves as an autonomous agent**.
-
-TamaBench closes this gap by requiring the model to:
-
-| Capability | How TamaBench Tests It |
-|---|---|
-| **Multi-step planning** | Resources decay — survival requires 3-day resource plans |
-| **Priority reasoning** | Multiple needs compete simultaneously (hunger vs. money vs. cleanliness) |
-| **Tool use / JSON output** | Every action is a structured JSON payload with strict schema |
-| **Budget & resource management** | Money must be earned before supplies can be bought |
-| **Adaptation** | Random sickness events force reactive replanning |
-| **Avoiding catastrophic failures** | Health reaching 0 terminates the episode immediately |
-
-## Designed for Small-Model Autonomous Agents
-
-TamaBench is especially useful for evaluating **small, local, and quantized model weights** running on consumer hardware. The goal is not only to ask whether a model can produce a correct answer, but whether it can repeatedly run an autonomous control loop:
-
-```text
-observe state → choose an action → use a tool → wait for consequences → observe again
+config = RunConfig(
+    agent="rule",
+    episodes=3,
+    seed_start=42,
+    max_simulated_minutes=7 * 1440,
+    output_dir="results/rule",
+    display="compact",
+)
+result = run_experiment(config)
+print(result.run_ids)
 ```
 
-This loop is common in practical automation systems. A model used for an autonomous task may need to:
+Save `config.model_dump_json(indent=2)` as a JSON file and pass `--config config.json`. Explicit CLI flags override the file. Invalid values, unknown configuration fields, unknown scenarios, non-finite numbers, and incompatible provider/lifecycle combinations fail before an episode starts.
 
-| Autonomous task | What the model must do |
-|---|---|
-| **IoT monitoring** | Read sensor state, detect abnormal conditions, trigger an actuator or alert, and continue monitoring |
-| **Email automation** | Inspect incoming messages, classify priority, draft or send a response, avoid duplicate actions, and escalate uncertain cases |
-| **Home automation** | Balance temperature, energy usage, schedules, and safety constraints over time |
-| **Server and service monitoring** | Read health signals, restart a failed component when safe, collect evidence, and notify an operator when recovery fails |
-| **Workflow automation** | Break a task into steps, call tools in the correct order, manage budgets and deadlines, and recover from errors |
+Defaults: `dynamic_v2`, seven days, accelerated execution, one seed starting at 42, CPU rule agent, compact display. `standard_v1` is an explicit compatibility spelling for current `dynamic_v2` rules; it does not emulate the historical simulator. Actual metadata always records scenario version 2 and behavioral contract 2.0.0.
 
-The Tamagotchi environment is a controlled sandbox for these same capabilities. It tests whether a model can:
+## Model backends
 
-- maintain state across many decisions;
-- choose actions based on changing observations;
-- use structured JSON as a tool/action interface;
-- plan around time, resources, and delayed consequences;
-- react to unexpected events;
-- avoid unsafe or irreversible actions; and
-- complete tasks efficiently with limited inference calls and token usage.
+### Ollama
 
-TamaBench does **not** claim that surviving the pet simulation directly proves that a model can safely operate an email account, IoT device, or production server. Those applications require their own tools, permissions, safety policies, and domain-specific tests. TamaBench measures the reusable agent skills underneath them: observation, planning, tool use, recovery, and long-horizon control.
-
-### ✅ Pros
-
-- **Fully local** — runs with [Ollama](https://ollama.com/) on consumer hardware, no API keys required
-- **Reproducible** — seeded random events ensure fair comparison between models
-- **Fast** — one episode completes in **under 5 minutes** on CPU-only hardware
-- **Observable** — full reasoning trace captured per step (`logs/reasoning_<date>.txt`)
-- **Model-agnostic** — any model served via Ollama or OpenAI-compatible API works
-- **Zero prompt leakage** — the system prompt is purely specification-based (no hints about when to use actions)
-- **Quantified results** — outputs survival rate, average health, happiness score, economic efficiency
-
----
-
-## Harness Evaluation: The Differentiator
-
-TamaBench measures not only:
-
-```text
-Model A  vs  Model B
-```
-
-but also:
-
-```text
-Raw Model  vs  Raw Model + Harness
-```
-
-This is one of the main distinguishing features of TamaBench — it answers:
-
-> Does better automation architecture compensate for smaller model size?
-
-### Harness V1
-
-The first harness is intentionally minimal:
-
-```text
- WAKE
-   ↓
- OBSERVE
-   ↓
- DECIDE
-   ↓
- CALCULATE NEXT WAKE
-   ↓
- SCHEDULE
-   ↓
- SLEEP
-   ↓
- WAKE
-```
-
-Three core stages:
-
-```text
-1. DECIDE
-2. CALCULATE
-3. SCHEDULE
-```
-
-The model does not need to run continuously — it wakes only when a care decision is required. Routine economy (work, buy, wait) is handled deterministically by the harness's reference policy, creating a controlled experiment around:
-
-- API call reduction
-- Token reduction
-- Compute reduction
-- Better timing
-- Better long-horizon survival
-
-…without changing model size.
-
-### Signature Experiment: Same Model, Different Harness
-
-```text
-LFM2.5 2.6B Raw
- ↓
-LFM2.5 + Wake Scheduler
- ↓
-LFM2.5 + Harness V1
-```
-
-Keep identical: model, quantization, prompt budget, environment, scenario, seed set, temperature. Then compare:
-
-```text
-Survival Rate
-API Calls / Day
-Tokens / Day
-Planning Failures
-Schema Failures
-Resource Failures
-Latency
-```
-
-The key result becomes:
-
-> **How much effective autonomy came from the harness rather than the model?**
-
----
-
-## Current Results (5-Episode Averages)
-
-| Model | Episodes | Survival | Avg Score | Avg Days | Avg Output Tokens |
-|---|---:|---:|---:|---:|---:|
-| `qwen3.5:4b` + Harness V1 | 5 | 80.0% | 6,501 | 5.75 | 4,525.0 |
-| `llama3.2:1b` + Harness V1 | 7 | 14.3% | 4,859 | 3.78 | 18,820.0 |
-| `lfm2.5-thinking:1.2b` + Harness V1 | 5 | 0.0% | 4,754 | 4.17 | 332,318.0 |
-| `qwen2.5-coder:7b` + Harness V1 | 6 | 0.0% | 4,052 | 3.57 | 387.0 |
-| `qwen3.8:latest` + Harness V1 | 5 | 0.0% | 2,814 | 2.37 | 881.0 |
-| `qwen2.5:3b` + Harness V1 | 6 | 0.0% | 1,503 | 1.17 | 107.0 |
-| `oamazonasgabriel/lfm2.5-2.6b:q4_k_m-8gbGPU` + Harness V1 | 3 | 0.0% | 997 | 0.93 | 71,376.0 |
-| `RuleAgent` + Harness V1 | 1 | 0.0% | 820 | 0.72 | 1,538.0 |
-
-> **Note**: Averages calculated across 5 episodes to account for RNG variance in sickness and dynamic economy constraints.
-
----
-
-## Current State (v1.1 runtime)
-
-> ⚠️ **Early Research Preview** — APIs and scoring may change between minor versions.
-
-### What Works
-- ✅ Full simulation engine with event-driven time-skipping
-- ✅ **Dynamic Economy**: Prices and rewards scale dynamically using a calculus limit function.
-- ✅ **Pi-Style Minimalist Harness**: A hyper-optimized, token-efficient context builder that aggressively strips out redundant JSON structure to allow small models (like `llama3.2:1b`) to perform exceptionally well.
-- ✅ **Leaderboard API**: FastAPI application to track scores.
-- ✅ 6 actions: `feed`, `clean`, `heal`, `play`, `sleep`, `work`, `buy`, `wait`, `wake`
-- ✅ Sickness events with probabilistic triggers based on cleanliness
-- ✅ Per-step reasoning trace extraction (`<think>` tag support)
-- ✅ SQLite result database + JSONL event stream
-- ✅ **Harness V1 agent** (`--agent harness_v1`): Wakes the model only for care decisions and handles routine economy (including smart early-game **stockpiling**) deterministically.
-
-### Known Limitations
-- ❌ No multi-agent or parallel episode runner yet
-- ❌ No web dashboard for result visualization
-- ❌ Results from older environment versions are not cross-version comparable
-
----
-
-## Installation
-
-**Requirements:** Python 3.11+, [Ollama](https://ollama.com/)
+Install/run Ollama and obtain your model separately. TamaBench never silently downloads a model or installs a GPU stack.
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/Cheva1234/TamaBench.git
-cd TamaBench
-
-# 2. Install (editable mode recommended)
-pip install -e .
-
-# 3. Pull a model via Ollama
-ollama pull llama3.2:3b
+python -m tamabench doctor --agent raw_llm --backend ollama --model qwen2.5:3b
+python -m tamabench run \
+  --agent raw_llm --backend ollama --model qwen2.5:3b \
+  --api-base http://localhost:11434 \
+  --keep-alive 5m --output-dir results/ollama
 ```
 
----
+Ollama uses native `/api/generate` with an empty prompt for measured warmup, then `/api/chat` for decisions. Both send a finite `keep_alive` duration, default five minutes. Closing the HTTP client does not unload the server model; the TTL applies. `--model-lifecycle cold` explicitly unloads before each episode and records these cleanup requests separately in the manifest. This can affect other clients sharing that Ollama server. [Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md)
 
-## How to Use
+### Hosted API providers (no GPU required)
 
-### Run a Benchmark Episode
+Presets support OpenAI, OpenRouter, and Groq Chat Completions APIs. Pick your own exact model ID and set the corresponding environment variable: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `GROQ_API_KEY`.
 
 ```bash
-# Run 1 episode with any Ollama model
-python -m tamabench.cli run --agent raw_llm --model llama3.2:3b --episodes 1
-
-# Use the V1.1 default output budget explicitly
-python -m tamabench.cli run --agent raw_llm --model lfm2.5-2.6b \
-  --max-output-tokens 4096 --episodes 1
-
-# Run 3 episodes with a quantized model
-python -m tamabench.cli run --agent raw_llm --model qwen2.5:7b --episodes 3
-
-# Run the rule-based baseline (no model needed)
-python -m tamabench.cli run --agent rule --episodes 1
-
-# Run the Harness V1 agent (wraps a model; harness handles routine economy)
-python -m tamabench.cli run --agent harness_v1 --model <your-model> --episodes 1
+read -rsp 'API key: ' OPENAI_API_KEY; export OPENAI_API_KEY; echo
+tamabench providers
+tamabench doctor --provider openai --model YOUR_MODEL_ID
+tamabench run --provider openai --model YOUR_MODEL_ID \
+  --horizon-minutes 240 --max-api-calls 30 --max-output-tokens 512 \
+  --max-total-tokens 30000 --max-wall-seconds 300 --max-retries 0 \
+  --output-dir results/api-smoke
 ```
 
-### Dynamic Difficulty Scaling (Calculus Limit)
+Change the provider and credential variable to use OpenRouter or Groq. `--provider` selects the model agent, backend, endpoint, named credential variable, and compatible output-token field. API presets require an explicit model instead of guessing a billable choice. `doctor` checks local configuration and credential presence without requests; `run` may incur provider charges. Missing required keys fail before an experiment starts. This short run is a smoke test, not a full ranking.
 
-TamaBench V1 no longer uses static difficulty tracks (like easy/hard). Instead, it implements a dynamic economy that gets progressively harder as simulated days pass:
-- **Food & Medicine Costs** start relatively cheap but increase asymptotically toward an equilibrium limit.
-- **Job Rewards** start generous (e.g., $60 for a cafe shift) but decay toward the same limit (e.g., $30).
+For other compatible endpoints, use `--provider custom --model YOUR_MODEL_ID --api-base https://your-provider.example/v1 --api-key-env TAMABENCH_API_KEY --require-api-key`. An unauthenticated local server can omit `--require-api-key`. The existing `--backend openai_compatible` interface remains supported. Credentials never belong in configuration files, CLI key-value arguments, or URLs. Named cloud endpoints are pinned; authenticated remote custom endpoints require HTTPS and redirects are disabled.
 
-This creates a scenario where early-game survival is forgiving, but long-term survival requires strategic stockpiling and highly optimized action loops as profit margins become razor-thin.
+Cloud presets omit temperature, sampling seeds, reasoning options, and JSON mode unless explicitly chosen. This avoids sending unsupported model-specific options. These omissions are recorded and mean provider defaults apply. Generic services receive `/chat/completions` with no Ollama fields or artificial warmup. Native Responses, Anthropic Messages, and Gemini APIs are not implemented. API availability and model-option support were checked in documentation, not live-paid runs.
 
-### Watch the Reasoning Log (Live)
+See [provider setup, custom endpoints, troubleshooting, and comparison guidance](docs/providers.md). In Colab, select the provider from the form, enter the model ID, and add the matching Colab Secret. Hosted APIs do not require a Colab GPU.
+
+## Bounds and outcomes
+
+Use `--max-decisions`, `--max-api-calls`, `--max-total-tokens`, `--max-wall-seconds`, `--max-consecutive-failures`, and `--max-stalled-decisions` to bound runs. Provider timeout, output-token limit, retry count, temperature, inference seed, schema mode, and reasoning effort are configurable. Ollama and legacy backend-only configurations follow the episode seed by default. Cloud/custom presets omit sampling seeds unless `--inference-seed` or `--seed-mode episode` is supplied.
+
+Input-token usage is known only after a provider response. Token budgets stop further calls after observed usage and clamp requested output tokens; they are not a guaranteed pre-call token or monetary spending cap. In-flight HTTP requests are bounded by timeouts. Provider-reported usage can be inaccurate. With a token budget enabled, missing usage is treated as an infrastructure failure rather than allowing unmetered calls.
+
+Episodes distinguish:
+
+- `completed`: alive at the configured horizon
+- `died`: health reached zero
+- `invalid_action_abort` or `stalled`: repeated rejected/non-advancing decisions
+- `budget_exhausted`: configured budget reached
+- `interrupted` or `infrastructure_failed`: execution did not produce a finished scientific outcome
+
+A rejected action advances no time and does not become a fallback wait. Time-skips stop at death or the horizon. Work earns its start-time quote only after the full job duration completes alive, including jobs ending exactly at the horizon. `success` means accepted; `completed` means the requested action finished alive. `execution_minutes` is actual elapsed time.
+
+## Outputs, resume, replay
+
+One output directory contains:
+
+```text
+manifest.json       configuration, source/spec hashes, seeds, dependencies, status
+results.sqlite      run metadata, decisions, timing, and outcomes
+events.jsonl        durable event stream
+traces/             per-run replay JSONL and human-readable traces
+summary.json        machine-readable measured episode metrics
+summary.csv         one row per episode attempt
+summary.md          readable results
+```
+
+`--no-trace-logs` disables the optional duplicate trace files; SQLite and events remain available. The legacy `--db-path` and `--event-path` flags override those two destinations; other outputs stay in `--output-dir` (or beside the requested database when no output directory is specified).
 
 ```bash
-tail -f logs/reasoning_latest.txt
+python -m tamabench run --agent rule --episodes 10 --output-dir results/rule --resume
+python -m tamabench export --output-dir results/rule
+python -m tamabench replay --output-dir results/rule --run-id RUN_ID_FROM_SUMMARY
+python -m tamabench report --output-dir results/rule --experiment-id EXP_ID_FROM_MANIFEST
 ```
 
-### Compare Models
+Resume skips exact configuration-and-seed pairs with finished statuses: `completed`, `died`, `invalid_action_abort`, `stalled`, or `budget_exhausted`. It retries `running`, `interrupted`, and `infrastructure_failed` attempts from the beginning. It does not selectively rerun scientific failures or continue mid-episode. Changing provider settings, budgets, the specification, or installed source creates a new fingerprint. Extending the seed range, changing display, or moving output paths does not change the behavioral fingerprint. Without `--resume`, another attempt is recorded.
+
+Reports keep configurations separate and calculate values from recorded results. `report-v1` remains an alias for the current report command. V1 results are not directly comparable with the corrected V2 contract.
+
+## What is measured
+
+- Survival and actual simulated duration
+- Health/happiness averages over every simulated minute, plus minimum health
+- Strict JSON/schema reliability, first-pass failures, retries, and truncation
+- Accepted actions, completed jobs, income, and spending
+- Model calls versus deterministic harness/policy decisions and overrides
+- Provider usage, model latency, warmup, wall time, and non-inference overhead
+
+Unimplemented causal/planning/prediction metrics remain null or unavailable; no placeholder benchmark scores are presented as measured facts. Harness results include deterministic policy assistance and must not be interpreted as pure model autonomy.
+
+The canonical action parser accepts one complete JSON object. It preserves sleep hours, rejects booleans as quantities, rejects negative/zero amounts and durations, rejects unknown fields/actions and duplicate keys, and does not repair truncated or prose-wrapped JSON. JSON, dictionaries, and typed proposals share one validation boundary.
+
+The [behavioral specification](tamabench/spec/environment_v2.yaml) documents exact rates, action ordering, automatic sleep transitions, dynamic prices/rewards, sickness events, and welfare sampling. `hunger` is the legacy field name for fullness: 100 is full and 0 is starving.
+
+## Development and verification
 
 ```bash
-# Run baseline
-python -m tamabench.cli run --agent rule --episodes 5
-
-# Run target model
-python -m tamabench.cli run --agent raw_llm --model <your-model> --episodes 5
-
-# Query results
-sqlite3 tamabench_results.db "
-  SELECT model_name, COUNT(*) as episodes,
-         ROUND(AVG(survived)*100,1) as survival_pct,
-         ROUND(AVG(final_health),1) as avg_health
-  FROM outcomes JOIN runs USING(run_id)
-  GROUP BY model_name;
-"
+python -m pytest
+python scripts/benchmark_overhead.py --help
 ```
 
-### Shareable Model Comparison
+The offline regression suite includes the seed-14 reference/accelerated health divergence, 1,000 reachable randomized trajectories, welfare segmentation invariance, an independent minute-end oracle, horizon and reward edges, strict parser parity, and mocked provider/logging failures. The overhead benchmark uses deterministic fake models and makes no real inference requests. Real GPU/provider performance is not claimed by these checks.
 
-For a useful comparison, run the same number of episodes and seeds for every
-model, then share survival, health, schema quality, and efficiency together:
+License: [MIT](LICENSE)
 
-```bash
-python -m tamabench.cli run --agent rule --episodes 5 --seed-start 42 --display compact
-python -m tamabench.cli run --agent raw_llm --model YOUR_MODEL \
-  --episodes 5 --seed-start 42 --display compact
-python -m tamabench.cli report-v1
-```
+The optional local submission prototype can be installed with `python -m pip install -e '.[api]'`. It stores unverified client-submitted results and is not a trusted public leaderboard. Development/CI API tests use in-process test clients, with no production database or network server.
 
-Use this format when posting results:
-
-| Model | Episodes | Survival | Average health | Final schema | Output tokens | p95 latency |
-|---|---:|---:|---:|---:|---:|---:|
-| `your-model` | 5 | fill in | fill in | fill in | fill in | fill in |
-
-Always include the TamaBench/environment version, seed range, execution mode,
-and generation limit so other people can reproduce the comparison.
-
----
-
-## Output & Logs
-
-| File | Description |
-|---|---|
-| `tamabench_results.db` | SQLite database with all episode results |
-| `tamabench_events.jsonl` | Per-step event stream (JSONL format) |
-| `logs/reasoning_<date>.txt` | Reasoning, JSON output, finish reason, and token split per step |
-| `logs/replay_<run_id>.jsonl` | Full episode replay for post-analysis |
-
----
-
-## Project Structure
-
-```
-TamaBench/
-├── tamabench/
-│   ├── env/              # Simulation engine (core, dynamics, scheduler, economy)
-│   ├── agents/           # Agent implementations (rule-based, raw LLM, harness V1)
-│   ├── context/          # System prompt builder
-│   ├── validation/       # JSON schema + environment precondition validators
-│   ├── logging/          # File logger, DB logger, event stream
-│   ├── metrics/          # Scoring calculator, live reporter
-│   ├── runner/           # Batch runner
-│   └── cli.py            # Entry point
-├── tests/                # Unit + integration test suite
-├── pyproject.toml
-├── LICENSE
-└── README.md
-```
-
----
-
-## How Scoring Works
-
-TamaBench uses a unified scalar scoring formula to rank agents on the leaderboard:
-`Score = (Simulated Days * 1000) + (Average Health * 10) + (Total Income - Total Spending)`
-
-An episode is evaluated across several dimensions:
-| Metric | Description |
-|---|---|
-| **Unified Score** | The single scalar value used for leaderboard ranking. |
-| **Survival** | Binary: did the pet survive the full simulation? |
-| **Average Health** | Mean health across all sampled steps (0–100) |
-| **First-Pass Schema Compliance** | % of decisions valid before recovery |
-| **Inference Efficiency** | p95 latency, API calls/day, reasoning/JSON tokens |
-
-### Leaderboard API
-The repository now includes a built-in FastAPI Leaderboard to submit and track scores globally!
-1. Start the API: `uvicorn tamabench.api.main:app --reload`
-2. Endpoints: `POST /submit` (to save a run) and `GET /leaderboard` (to view rankings).
-
-## License
-
-[MIT](LICENSE) — free to use, modify, and distribute.
-
----
-
-<div align="center">
-<sub>Small Model. Long Horizon. Persistent Consequences. · Built as part of Project Aether · TamaBench v1.1.0</sub>
-</div>
+The GitHub Actions workflow runs the full offline suite on Python 3.10 and 3.12, builds a wheel, and smoke-tests the installed wheel outside the checkout. This workflow is provided for a future authorized push; creating the file does not mean hosted CI has run.

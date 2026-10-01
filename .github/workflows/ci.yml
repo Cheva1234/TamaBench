@@ -1,0 +1,57 @@
+name: Offline benchmark verification
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test and optional local API dependencies
+        run: python -m pip install -e '.[dev,api]' build
+      - name: Full offline test suite
+        run: python -m pytest -q
+      - name: Build distribution wheel
+        run: python -m build --wheel
+      - name: Install wheel and run CPU smoke outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/tamabench-wheel-venv"
+          PY="$RUNNER_TEMP/tamabench-wheel-venv/bin/python"
+          "$PY" -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          cd "$RUNNER_TEMP"
+          export PYTHONPATH=""
+          OUTPUT="$RUNNER_TEMP/tamabench-wheel-results"
+          "$PY" -m tamabench doctor --output-dir "$OUTPUT"
+          "$PY" -m tamabench run --agent rule --max-simulated-minutes 240 --display quiet --output-dir "$OUTPUT"
+          "$PY" -m tamabench report --output-dir "$OUTPUT"
+          "$PY" -m tamabench export --output-dir "$OUTPUT"
+          RUN_ID=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["episodes"][0]["run_id"])' "$OUTPUT/summary.json")
+          "$PY" -m tamabench replay --output-dir "$OUTPUT" --run-id "$RUN_ID"
+          "$PY" - <<'PY'
+          import os
+          from pathlib import Path
+          import tamabench
+          from tamabench.spec.spec_loader import EnvironmentSpecLoader
+          assert tamabench.__version__ == "2.0.0"
+          assert not Path(tamabench.__file__).resolve().is_relative_to(Path(os.environ["GITHUB_WORKSPACE"]).resolve())
+          assert Path(EnvironmentSpecLoader.get_spec_filepath()).is_file()
+          assert EnvironmentSpecLoader.get_spec_hash().startswith("sha256:")
+          PY

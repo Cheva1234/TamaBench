@@ -43,7 +43,7 @@ class EnvironmentValidator:
                     error_type=ErrorType.PRECONDITION_FAILED,
                     message="Cannot play with pet while pet is sleeping.",
                 )
-            if agent.energy < 10:
+            if agent.available_energy < 10:
                 return BenchmarkError(
                     category=ErrorCategory.ENVIRONMENT,
                     error_type=ErrorType.INSUFFICIENT_RESOURCE,
@@ -57,7 +57,7 @@ class EnvironmentValidator:
                     error_type=ErrorType.PRECONDITION_FAILED,
                     message="Cannot clean pet while pet is sleeping.",
                 )
-            if agent.energy < 5:
+            if agent.available_energy < 5:
                 return BenchmarkError(
                     category=ErrorCategory.ENVIRONMENT,
                     error_type=ErrorType.INSUFFICIENT_RESOURCE,
@@ -102,7 +102,7 @@ class EnvironmentValidator:
                     error_type=ErrorType.ACTION_UNAVAILABLE,
                     message=f"Job '{proposal.job_id}' is not available.",
                 )
-            if agent.energy < job.energy_cost:
+            if agent.available_energy < job.energy_cost:
                 return BenchmarkError(
                     category=ErrorCategory.ENVIRONMENT,
                     error_type=ErrorType.INSUFFICIENT_RESOURCE,
@@ -117,7 +117,7 @@ class EnvironmentValidator:
                     error_type=ErrorType.ACTION_UNAVAILABLE,
                     message=f"Item '{proposal.item}' is not sold in shop.",
                 )
-            amount = proposal.amount or 1
+            amount = proposal.amount
             total_cost = item.cost * amount
             if agent.money < total_cost:
                 return BenchmarkError(

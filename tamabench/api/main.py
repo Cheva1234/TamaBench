@@ -1,78 +1,59 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import sqlite3
+"""Local unverified-submission prototype, not a trusted public leaderboard."""
+from contextlib import asynccontextmanager, closing
 import os
-from contextlib import asynccontextmanager
+import sqlite3
 
-DB_PATH = "leaderboard.db"
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
+
+DB_PATH = os.environ.get("TAMABENCH_LEADERBOARD_DB", "leaderboard.db")
+
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS leaderboard (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id TEXT UNIQUE,
-            agent_name TEXT,
-            survived BOOLEAN,
-            simulated_days REAL,
-            avg_health REAL,
-            score REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS leaderboard (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT UNIQUE,
+            agent_name TEXT, survived BOOLEAN, simulated_days REAL,
+            avg_health REAL, score REAL)''')
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app):
     init_db()
     yield
 
-app = FastAPI(title="TamaBench Leaderboard API", lifespan=lifespan)
+
+app = FastAPI(title="TamaBench local unverified submissions", lifespan=lifespan,
+    description="Client-supplied results are unverified. This prototype has no authentication or trajectory verification and must not be presented as a trusted public ranking.")
+
 
 class ScoreSubmit(BaseModel):
-    run_id: str
-    agent_name: str
+    model_config = ConfigDict(extra="forbid")
+    run_id: str = Field(min_length=1, max_length=128)
+    agent_name: str = Field(min_length=1, max_length=256)
     survived: bool
-    simulated_days: float
-    avg_health: float
-    score: float
+    simulated_days: FiniteFloat = Field(ge=0)
+    avg_health: FiniteFloat = Field(ge=0, le=100)
+    score: FiniteFloat
+
 
 @app.post("/submit")
 def submit_score(score: ScoreSubmit):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO leaderboard (run_id, agent_name, survived, simulated_days, avg_health, score)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (score.run_id, score.agent_name, score.survived, score.simulated_days, score.avg_health, score.score))
-        conn.commit()
-        conn.close()
-        return {"status": "success", "message": "Score submitted"}
+        with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+            conn.execute('''INSERT INTO leaderboard
+                (run_id,agent_name,survived,simulated_days,avg_health,score) VALUES (?,?,?,?,?,?)''',
+                (score.run_id,score.agent_name,score.survived,score.simulated_days,score.avg_health,score.score))
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Run ID already exists")
+        raise HTTPException(status_code=409, detail="Run ID already exists")
+    return {"status":"success", "verification_status":"unverified", "message":"Stored client-supplied result; no benchmark verification performed"}
+
 
 @app.get("/leaderboard")
-def get_leaderboard(limit: int = 10):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        SELECT agent_name, survived, simulated_days, avg_health, score
-        FROM leaderboard 
-        ORDER BY score DESC 
-        LIMIT ?
-    ''', (limit,))
-    rows = c.fetchall()
-    conn.close()
-    
-    result = []
-    for r in rows:
-        result.append({
-            "agent_name": r[0],
-            "survived": bool(r[1]),
-            "simulated_days": r[2],
-            "avg_health": r[3],
-            "score": r[4]
-        })
-    return {"leaderboard": result}
+def get_leaderboard(limit: int = Query(10, ge=1, le=100)):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        rows = conn.execute('''SELECT agent_name,survived,simulated_days,avg_health,score
+                               FROM leaderboard ORDER BY score DESC LIMIT ?''', (limit,)).fetchall()
+    return {"verification_status":"unverified", "leaderboard":[dict(zip(
+        ("agent_name","survived","simulated_days","avg_health","score"),
+        (r[0],bool(r[1]),r[2],r[3],r[4]))) for r in rows]}

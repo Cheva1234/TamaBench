@@ -8,7 +8,6 @@ import random
 from dataclasses import dataclass
 from typing import Callable, Optional
 from tamabench.env.state import WorldState
-from tamabench.env.dynamics import DynamicsEngine
 
 
 @dataclass
@@ -65,41 +64,8 @@ class EventScheduler:
                     earliest = event.timestamp_minute
                 break
 
-        # 2. Check Analytical State Threshold Events if state is provided
-        if state is not None:
-            pet = state.pet
-
-            # Threshold A: Critical Hunger (fullness < 15.0)
-            if pet.hunger >= DynamicsEngine.CRITICAL_HUNGER_THRESHOLD:
-                mins_to_hunger = int(
-                    (pet.hunger - DynamicsEngine.CRITICAL_HUNGER_THRESHOLD)
-                    / DynamicsEngine.HUNGER_RATE
-                ) + 1
-                threshold_min = current_minute + max(1, mins_to_hunger)
-                if current_minute < threshold_min <= target_minute:
-                    if earliest is None or threshold_min < earliest:
-                        earliest = threshold_min
-
-            # Threshold B: Low Cleanliness (cleanliness <= 20.0)
-            if pet.cleanliness > 20.0:
-                mins_to_clean = int((pet.cleanliness - 20.0) / 0.15) + 1
-                threshold_min = current_minute + max(1, mins_to_clean)
-                if current_minute < threshold_min <= target_minute:
-                    if earliest is None or threshold_min < earliest:
-                        earliest = threshold_min
-
-            # Sleep health recovery ends immediately after fullness falls below
-            # 50, so the accelerated engine must split at that boundary too.
-            if pet.is_sleeping and pet.hunger >= DynamicsEngine.SLEEP_HEALTH_RECOVERY_THRESHOLD:
-                mins_to_sleep_recovery_end = int(
-                    (pet.hunger - DynamicsEngine.SLEEP_HEALTH_RECOVERY_THRESHOLD)
-                    / DynamicsEngine.HUNGER_RATE
-                ) + 1
-                threshold_min = current_minute + max(1, mins_to_sleep_recovery_end)
-                if current_minute < threshold_min <= target_minute:
-                    if earliest is None or threshold_min < earliest:
-                        earliest = threshold_min
-
+        # DynamicsEngine owns exact integer threshold segmentation. The scheduler
+        # only splits at exogenous events, avoiding duplicated float boundaries.
         return earliest
 
     def trigger_events_at(self, minute: int, state: WorldState) -> list[str]:
