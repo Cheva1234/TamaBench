@@ -1,15 +1,36 @@
-# TamaBench 2.0
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tamabench-header-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/tamabench-header-light.svg">
+    <img src="docs/assets/tamabench-header-light.svg" alt="TamaBench by Cheva Labs — Small world. Decisions that matter." width="1200">
+  </picture>
 
-**How well can an AI agent care for a virtual pet over seven simulated days?** TamaBench evaluates decisions about health, work, money, inventory, and energy in a deterministic environment. Run a CPU baseline, connect a hosted model API, or use your own Ollama server.
+  <br><br>
 
-[Open in Colab](https://colab.research.google.com/github/Cheva1234/TamaBench/blob/main/notebooks/TamaBench_Colab.ipynb) · [API provider guide](docs/providers.md) · [Environment rules](tamabench/spec/environment_v2.yaml) · [CI runs](https://github.com/Cheva1234/TamaBench/actions/workflows/ci.yml)
+  <a href="https://github.com/Cheva1234/TamaBench/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/Cheva1234/TamaBench/actions/workflows/ci.yml/badge.svg?branch=main" alt="Offline benchmark verification on main"></a>
+  <a href="https://colab.research.google.com/github/Cheva1234/TamaBench/blob/main/notebooks/TamaBench_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab"></a>
 
-- One implementation for Python, CLI, and the four-cell Colab notebook
-- Accelerated simulation with a minute-by-minute reference engine and equivalence tests
-- Measured results, explicit failure statuses, reproducible configuration, and replayable trajectories
-- OpenAI, OpenRouter, Groq, custom Chat Completions endpoints, and native Ollama
+  <h3>Seven simulated days. Every decision recorded.</h3>
+  <p>Evaluate how an AI agent manages care, work, money, and energy<br>in a small world with deterministic rules and replayable evidence.</p>
 
-TamaBench measures performance in this environment. It does not establish a universal ranking of intelligence or autonomy, and V1 results are not comparable with the corrected V2 contract.
+  <p><a href="#1-try-a-cpu-baseline"><strong>Start locally</strong></a> &nbsp;·&nbsp; <a href="#2-test-a-hosted-model-api"><strong>Connect an API</strong></a> &nbsp;·&nbsp; <a href="#3-run-in-colab"><strong>Run in Colab</strong></a></p>
+  <p><a href="docs/providers.md">Provider guide</a> &nbsp;·&nbsp; <a href="#results-resume-and-replay">Results &amp; replay</a> &nbsp;·&nbsp; <a href="#benchmark-contract-and-credibility">Benchmark contract</a> &nbsp;·&nbsp; <a href="tamabench/spec/environment_v2.yaml">Environment rules</a></p>
+</div>
+
+<br>
+
+## A small world, built for careful comparisons
+
+**TamaBench 2.0** is a benchmark for autonomous agents from **Cheva Labs**. Keep a virtual pet healthy while balancing work, money, inventory, and energy. Start with a CPU baseline, connect a hosted model API, or bring your own Ollama server.
+
+| Run anywhere | Inspect every result |
+| :--- | :--- |
+| **CLI · Python · Colab**<br>One configuration and one implementation | **Recorded evidence**<br>Measured outcomes, explicit failures, replayable trajectories |
+| **Local models or hosted APIs**<br>Ollama, OpenAI, OpenRouter, Groq, and compatible endpoints | **Deterministic environment**<br>Accelerated simulation checked against a reference engine |
+
+> TamaBench measures performance in this environment. It does not establish a universal ranking of intelligence or autonomy. V1 and V2 results are not directly comparable.
+
+<br>
 
 ## 1. Try a CPU baseline
 
@@ -52,6 +73,8 @@ python -m pip install "git+https://github.com/Cheva1234/TamaBench.git@baf8145605
 ```
 
 Use a fresh environment when switching installations. [Verification for this commit](https://github.com/Cheva1234/TamaBench/actions/runs/36899531782) includes the full offline test suite, wheel build, and installed-wheel CPU smoke/replay. The manifest records the installed source and rule hashes; package version `2.0.0` alone is insufficient to identify an exact experiment.
+
+<br>
 
 ## 2. Test a hosted model API
 
@@ -107,6 +130,8 @@ python -m tamabench run --provider ollama --model YOUR_OLLAMA_MODEL \
 
 Ollama uses a measured empty-prompt warmup and native chat calls. A finite five-minute residency TTL is the default. `--model-lifecycle cold` unloads before each episode and records cleanup requests separately; it can affect other users of the same server. See [Ollama's API](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
+<br>
+
 ## 3. Run in Colab
 
 1. [Open the notebook](https://colab.research.google.com/github/Cheva1234/TamaBench/blob/main/notebooks/TamaBench_Colab.ipynb) and run the install cell. It installs the verified commit above by default
@@ -114,6 +139,8 @@ Ollama uses a measured empty-prompt warmup and native chat calls. A finite five-
 3. Run the execution cell, then the download cell to save the results ZIP
 
 The default is one 240-minute episode with small explicit budgets and no model-output retries. Hosted APIs need no Colab GPU. Optional Google Drive persistence and source-ZIP/local-checkout installation are documented in [Colab setup](docs/colab.md). The notebook calls the same package functions as the CLI; it contains no separate simulator.
+
+<br>
 
 ## Results, resume, and replay
 
@@ -142,6 +169,8 @@ Replace `RUN_ID_FROM_SUMMARY` with a `run_id` in `results/rule/summary.json`. `r
 
 Resume skips finished `completed`, `died`, `invalid_action_abort`, `stalled`, and `budget_exhausted` attempts. It retries interrupted/infrastructure attempts from the beginning. It does not discard scientific failures or continue mid-episode. Changing provider options, budgets, rules, or installed source creates a different fingerprint. Increasing the episode count or changing output/display settings does not. Without `--resume`, another attempt is recorded.
 
+<br>
+
 ## Python and saved configuration
 
 ```python
@@ -166,6 +195,8 @@ Explicit CLI flags override saved values. Changing `--provider` also resets the 
 
 Defaults are the `dynamic_v2` scenario, a seven-day horizon, accelerated mode, one seed starting at 42, and the CPU rule agent. `standard_v1` is an alias for current V2 rules, not a V1 emulator.
 
+<br>
+
 ## Benchmark contract and credibility
 
 The [versioned specification](tamabench/spec/environment_v2.yaml) defines rates, action ordering, prices, sickness events, rewards, and welfare sampling. `hunger` retains its historical field name but means fullness: 100 is full.
@@ -180,6 +211,8 @@ The [versioned specification](tamabench/spec/environment_v2.yaml) defines rates,
 - Replay verifies deterministic transitions and trajectory-derived outcomes; it does not reproduce the provider's model generation
 
 For a credible comparison, publish the exact source/model/configuration, seed set, horizon, budgets, schema mode, sampling controls, and whether a harness assisted the model. Report sample size and uncertainty, keep infrastructure attempts visible, and retain the trajectory artifacts. The report includes a Wilson 95% interval for survival; a small sample is still limited evidence. Harness results include policy assistance and must be labeled accordingly. The retained composite score is secondary, not a validated universal autonomy ranking.
+
+<br>
 
 ## Development and verification
 
@@ -196,4 +229,9 @@ Provider integration and Colab interfaces are tested with mocks. No live hosted-
 
 The optional local API stores unverified submitted results; it is not a trusted public leaderboard. Install its dependencies with `python -m pip install -e '.[api]'`.
 
-License: [MIT](LICENSE)
+<br>
+
+<div align="center">
+  <sub><strong>CHEVA LABS</strong> &nbsp; / &nbsp; Open research, recorded evidence.</sub><br>
+  <sub><a href="LICENSE">MIT license</a> &nbsp;·&nbsp; <a href="CITATION.cff">Citation</a> &nbsp;·&nbsp; <a href="#1-try-a-cpu-baseline">Get started</a></sub>
+</div>
